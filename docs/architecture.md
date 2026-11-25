@@ -26,6 +26,9 @@
 | Prometheus | Collects and stores metrics using pull-based scraping | `monitoring-prometheus-data` |
 | Grafana OSS | Shows dashboards. Its data source and dashboards are provisioned from files. | `monitoring-grafana-data` |
 | Uptime Kuma | Runs external availability checks (HTTP, TCP) and stores the up/down history | `monitoring-uptime-kuma-data` |
+| Alertmanager (Phase 2) | Receives alerts from Prometheus, then groups, deduplicates, inhibits and suppresses repeats. Has no notification receivers yet. | `monitoring-alertmanager-data` |
+
+Phase 2 data flow: Prometheus scrapes `http://host.docker.internal:8000/metrics` every 15 s using a bearer token. It evaluates `prometheus/rules/*.yml` and sends firing alerts to `alertmanager:9093`. Grafana's *Application Overview* dashboard queries Prometheus, filtered by the `application` and `environment` labels.
 
 ## Two kinds of availability
 

@@ -33,3 +33,30 @@
 ## ADR-007: Empty alert rule files in Phase 1
 - **Decision:** The rule files exist with `groups: []`. Alertmanager is not deployed.
 - **Reason:** Alertmanager is approved for Phase 2. Rules without application metrics would be meaningless.
+- **Superseded in Phase 2** by ADR-011.
+
+## ADR-009: django-prometheus 2.6.0.dev26 (pre-release)
+- **Date:** 2026-11-25. **Approved by:** project owner.
+- **Context:** The latest stable release, 2.5.0, requires `Django<6.1`. The app runs Django 6.1.x. 2.6.0.dev26 is the first release that declares Django 6.1 support (`Django<6.2`).
+- **Decision:** Pin `==2.6.0.dev26` exactly. Upgrade to 2.6.0 stable once it is released.
+- **Rejected:** A custom middleware built on `prometheus-client`, because it means more code to maintain and loses the DB metrics option.
+
+## ADR-010: Token-protected /metrics
+- **Decision:** `/metrics` is served by a wrapper view that requires `Authorization: Bearer <token>`, compared in constant time. The token comes from the `MONITORING_METRICS_TOKEN` environment variable. Prometheus reads it from `secrets/<app>-metrics.token` through `credentials_file`. With no token set, the endpoint returns 404.
+- **Reason:** CLAUDE.md §10 requires restricting `/metrics` to monitoring infrastructure. An IP allowlist does not work reliably here: Docker Desktop's forwarding makes container traffic appear to come from the host. A token keeps working when production moves to separate infrastructure.
+
+## ADR-011: Alertmanager with no notification receivers
+- **Decision:** Deploy Alertmanager v0.35.1 with a `null` default receiver, grouped by `alertname`, `application` and `environment`, with `repeat_interval: 4h` and inhibition rules. Commit `alertmanager.yml`, which contains no secrets. Future credentials go through `*_file` settings that point into `secrets/`.
+- **Reason:** It gives deduplication, grouping and suppression now. No real notifications are sent until they are approved (CLAUDE.md §13).
+
+## ADR-012: Thresholds as recording rules
+- **Decision:** Alert thresholds are recording rules (`app:threshold:*`) and alerts compare against them with `scalar()`.
+- **Reason:** Thresholds can be tuned in one place without editing alert expressions. Per-application overrides can be added later.
+
+## ADR-013: Out-of-tree failure-simulation harness
+- **Decision:** The HTTP 500, slow-request and database-failure simulations live in `monitoring-app/tests/django_harness` and are activated only through `DJANGO_SETTINGS_MODULE`.
+- **Reason:** No temporary failure endpoints exist in the application code, so there is nothing to remove before production. The real SQLite database, which holds personal records, is never altered.
+
+## ADR-014: Alerting uses Prometheus scrape availability
+- **Decision:** `ApplicationDown` is based on `up == 0` for 30 s, which is two failed scrapes at a 15 s interval. Uptime Kuma independently tracks user-facing availability.
+- **Reason:** Uptime Kuma notifications would duplicate the Alertmanager routing. A single alert pipeline avoids alert fatigue.

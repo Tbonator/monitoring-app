@@ -2,13 +2,16 @@
 
 A standalone, open-source technical monitoring platform. The first application it will monitor is the **Funeral Back Office System** (a Django application).
 
-**Current phase:** Phase 1, the core monitoring MVP. It provides the monitoring stack only. No application is integrated yet.
+**Current phase:** Phase 2, which integrates the Funeral Back Office System. See [TASKS.md](TASKS.md) for status.
 
 | Service | URL (local only) | Purpose |
 |---|---|---|
-| Grafana OSS 13.3.2 | http://localhost:3000 | Dashboards |
+| Grafana OSS 13.3.2 | http://localhost:3000 | Dashboards: *Application Overview* and *Monitoring Platform Health* |
 | Uptime Kuma 2.5.12 | http://localhost:3001 | Availability checks |
-| Prometheus v3.16.0 | http://localhost:9090 | Metrics collection and storage |
+| Prometheus v3.16.0 | http://localhost:9090 | Metrics collection, storage and alert rules |
+| Alertmanager v0.35.1 | http://localhost:9093 | Alert grouping, deduplication and suppression. No notifications are configured. |
+
+Monitored application: Funeral Back Office, Django on `127.0.0.1:8000`. To run it with monitoring enabled, see [docs/application-integration.md](docs/application-integration.md).
 
 ## Quick start (PowerShell)
 

@@ -1,1 +1,1 @@
-﻿# Phase 2 placeholder - pinned django-prometheus version will be added after reviewing the target application.
+﻿django-prometheus==2.6.0.dev26  # pre-release: first version declaring Django 6.1 support; move to 2.6.0 stable when released

@@ -15,6 +15,22 @@ The monitored Funeral Back Office System processes sensitive personal informatio
 | Resource isolation | Memory limits are 512 MB for Prometheus, 768 MB for Grafana and 512 MB for Uptime Kuma. Each container is limited to 1 CPU, and logs are rotated (3 × 10 MB). |
 | Retention | Prometheus keeps 15 days of data, capped at 5 GB. Both values are configurable in `.env`. |
 
+## Controls added in Phase 2
+
+| Control | Implementation |
+|---|---|
+| Metrics endpoint access | `/metrics` requires a bearer token, compared with `hmac.compare_digest`. It returns 401 without a valid token and 404 when no token is configured. The token lives in `secrets/`, which is git-ignored, and is mounted read-only into Prometheus. |
+| No raw URLs in labels | Labels use Django view names. Verified: `/arrangements/<id>/` maps to `view="arrangement_detail"`. |
+| Health endpoints leak nothing | They return fixed JSON only. A test confirms that no paths, engine names or exception text appear in the 503 body. |
+| App not exposed to the LAN | Django is bound to `127.0.0.1:8000`, verified with `Get-NetTCPConnection`. |
+| No external notifications | Alertmanager's only receiver is `null`. |
+| Real data untouched by tests | The database-failure test uses an out-of-tree settings override and never touches `db.sqlite3`. |
+
+## Funeral Back Office findings (outside monitoring scope; not changed)
+
+- The active `settings.py` hardcodes `SECRET_KEY` and has `DEBUG=True`. The Git-tracked snapshot reads the key from `DJANGO_SECRET_KEY`. Treat the hardcoded key as compromised before any hosted use.
+- The active source tree is not tracked by Git. Only an older nested snapshot is committed.
+
 ## Known limitations (local development)
 
 - Traffic uses plain HTTP. This is acceptable on loopback only. Production needs HTTPS (Phase 5).
