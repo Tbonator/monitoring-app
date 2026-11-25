@@ -7,6 +7,7 @@ These tests are for development only. Never run them against production.
 | Configuration validation | `.\scripts\validate.ps1` |
 | Service health | `.\scripts\status.ps1` |
 | Dashboard queries return data | `python -I tests\check_dashboard_queries.py` |
+| Uptime Kuma monitor and heartbeat state (read-only) | `Get-Content tests\kuma_status.js -Raw \| docker exec -i uptime-kuma node -` |
 | Readiness reports a database failure (503, no leaks) | see below |
 | HTTP 500 and slow-request metrics and alerts | see below |
 
