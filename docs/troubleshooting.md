@@ -16,3 +16,8 @@
 | No errors appear in GlitchTip | `GLITCHTIP_DSN` isn't set in the Django process | Start the app with `.\scripts\run-funeral-app.ps1`. Check that `secrets\funeral-back-office-glitchtip.dsn` exists. |
 | GlitchTip returns 400 Bad Request | Host header not in `ALLOWED_HOSTS` | Use `http://localhost:8001` or `http://127.0.0.1:8001` |
 | Docker flags break in PowerShell 5.1 (`flag provided but not defined: -config`) | PowerShell splits unquoted `-a.b=c` arguments at the dot | Quote the argument: `'-config.file=/path'` |
+| `windows` target is down | windows_exporter isn't installed or isn't running | Run `.\scripts\install-windows-exporter.ps1`, then `Get-Service windows_exporter` and `Invoke-WebRequest http://127.0.0.1:9182/metrics` |
+| A Blackbox probe fails on a web UI | The UI redirects (for example `/` to `/dashboard`) | Use the `http_2xx_follow` module for that target. Health endpoints deliberately don't follow redirects. |
+| `BackupStatusMissing` alert | No backup has completed, or `exporters\textfile\monitoring_backup.prom` is missing | Run `.\scripts\backup.ps1`. Check `docker exec node-exporter ls /textfile`. |
+| promtool lint error "duplicate rule(s)" | Two recording rules share a name and labels | Give each a distinguishing static label (see ADR-024) |
+| `.env` reads are blocked for Claude Code | Ruflo's `.claude/settings.json` denies `Read(./.env)` | This is intended. Put new secrets in `secrets/` files (ADR-026). |

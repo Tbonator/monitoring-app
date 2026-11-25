@@ -15,39 +15,47 @@ function Write-Result($ok, $msg) {
 docker compose config --quiet
 Write-Result ($LASTEXITCODE -eq 0) 'docker compose config'
 
+# Resolved, pinned image references come from Compose (no direct .env parsing).
+$images = @{}
+foreach ($img in (docker compose config --images)) { $images[($img -split ':')[0]] = $img }
+function Get-Image($repo, $fallback) { if ($images[$repo]) { $images[$repo] } else { $fallback } }
+
 # 2. Prometheus config and rules (promtool from the pinned image)
-$promVersion = (Select-String -Path .env -Pattern '^PROMETHEUS_VERSION=(.+)$').Matches.Groups[1].Value
-if (-not $promVersion) { $promVersion = 'v3.16.0' }
 # Mirror the docker-compose.yml mounts so referenced paths resolve identically.
 $here = (Get-Location).Path
 if (-not (Test-Path secrets)) { New-Item -ItemType Directory secrets | Out-Null }
 docker run --rm --entrypoint promtool `
     -v "$here\prometheus\prometheus.yml:/etc/prometheus/prometheus.yml:ro" `
     -v "$here\prometheus\rules:/etc/prometheus/rules:ro" `
+    -v "$here\prometheus\targets:/etc/prometheus/targets:ro" `
     -v "$here\secrets:/etc/prometheus/secrets:ro" `
-    "prom/prometheus:$promVersion" check config /etc/prometheus/prometheus.yml
+    (Get-Image 'prom/prometheus' 'prom/prometheus:v3.16.0') check config /etc/prometheus/prometheus.yml
 Write-Result ($LASTEXITCODE -eq 0) 'promtool check config (includes rule files)'
 
+# 2a. Alert rule unit tests (synthetic series; prometheus/tests/*.test.yml)
+foreach ($t in Get-ChildItem prometheus\tests -Filter *.test.yml -ErrorAction SilentlyContinue) {
+    docker run --rm --entrypoint promtool -v "$here\prometheus:/etc/prometheus:ro" `
+        (Get-Image 'prom/prometheus' 'prom/prometheus:v3.16.0') test rules "/etc/prometheus/tests/$($t.Name)" | Out-Null
+    Write-Result ($LASTEXITCODE -eq 0) "promtool test rules $($t.Name)"
+}
+
 # 2b. Alertmanager config (amtool from the pinned image)
-$amVersion = (Select-String -Path .env -Pattern '^ALERTMANAGER_VERSION=(.+)$').Matches.Groups[1].Value
-if (-not $amVersion) { $amVersion = 'v0.35.1' }
+
 docker run --rm --entrypoint amtool `
     -v "$here\alertmanager\alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro" `
-    "prom/alertmanager:$amVersion" check-config /etc/alertmanager/alertmanager.yml
+    (Get-Image 'prom/alertmanager' 'prom/alertmanager:v0.35.1') check-config /etc/alertmanager/alertmanager.yml
 Write-Result ($LASTEXITCODE -eq 0) 'amtool check-config'
 
 # 2c. Loki config (loki -verify-config from the pinned image)
-$lokiVersion = (Select-String -Path .env -Pattern '^LOKI_VERSION=(.+)$').Matches.Groups[1].Value
-if (-not $lokiVersion) { $lokiVersion = '3.7.10' }
+
 docker run --rm -v "$here\loki\loki-config.yml:/etc/loki/loki-config.yml:ro" `
-    "grafana/loki:$lokiVersion" '-config.file=/etc/loki/loki-config.yml' '-verify-config' 2>&1 | Out-Null
+    (Get-Image 'grafana/loki' 'grafana/loki:3.7.10') '-config.file=/etc/loki/loki-config.yml' '-verify-config' 2>&1 | Out-Null
 Write-Result ($LASTEXITCODE -eq 0) 'loki -verify-config'
 
 # 2d. Alloy config syntax (alloy fmt parses the file)
-$alloyVersion = (Select-String -Path .env -Pattern '^ALLOY_VERSION=(.+)$').Matches.Groups[1].Value
-if (-not $alloyVersion) { $alloyVersion = 'v1.22.0' }
+
 docker run --rm -v "$here\alloy\config.alloy:/etc/alloy/config.alloy:ro" `
-    "grafana/alloy:$alloyVersion" fmt /etc/alloy/config.alloy | Out-Null
+    (Get-Image 'grafana/alloy' 'grafana/alloy:v1.22.0') fmt /etc/alloy/config.alloy | Out-Null
 Write-Result ($LASTEXITCODE -eq 0) 'alloy fmt (config syntax)'
 
 # 3. Grafana dashboard JSON syntax

@@ -93,3 +93,25 @@
 - **Date:** 2026-11-25. **Decided by:** project owner.
 - **Decision:** `.claude/`, `.claude-flow/`, `.agents/`, `.swarm/` and `.mcp.json` are git-ignored.
 - **Reason:** These are personal developer tooling that `ruflo init` can regenerate. Committing `.claude/settings.json` and `.mcp.json` would make every clone run Ruflo hooks and an `npx` MCP server. `.swarm/memory.db` can contain session content, and several Ruflo files hold absolute local paths.
+
+## ADR-022: Phase 4 exporters and where they run
+- **Date:** 2026-11-25. **Approved by:** project owner (Windows Exporter MSI, PostgreSQL target, backup scope).
+- **Node Exporter v1.13.1** runs as a container. It reads the Docker Desktop VM's `/proc`, `/sys` and `/` **read-only**, with no host PID or network namespace and no privileged mode. On Linux production hosts the same service reports the real host. WSL plumbing mounts are excluded.
+- **Windows Exporter v0.32.1** is installed from the MSI as a Windows service. It is bound to **127.0.0.1:9182** with no firewall exception (`REMOVE=FirewallException`) and minimal collectors. Prometheus reaches it through `host.docker.internal`, using the same loopback forwarding that was proven for Django. The MSI was verified against the release SHA-256. Windows reports Authenticode `UnknownError` because the project signs with its own certificate.
+- **Blackbox Exporter v0.29.1** gives Prometheus-side HTTP probes that are independent of `/metrics` and of Uptime Kuma. Health endpoints do **not** follow redirects, so an unexpected redirect counts as a failure. Only web UIs whose root redirects use `http_2xx_follow`. TLS-expiry targets live in `prometheus/targets/tls-targets.yml`, which is empty until HTTPS arrives in Phase 5.
+- **PostgreSQL Exporter v0.21.1** monitors **GlitchTip's** database, because the funeral app uses SQLite. It connects as the `monitoring` role, which has `pg_monitor`, `default_transaction_read_only` and a 3-connection limit. A test confirmed it cannot read table data or write. The password is in `secrets/pg-monitor-password`.
+
+## ADR-023: Backup status as textfile metrics
+- **Decision:** `backup.ps1` takes its volume list from Compose, so it covers all volumes automatically. It writes `exporters/textfile/monitoring_backup.prom` atomically, which node-exporter reads. The alerts are `BackupMissing` (more than 24 h), `BackupStatusMissing` (never recorded) and `BackupFailed`.
+- **Not done:** automatic scheduling (a Windows scheduled task needs owner approval) and backup rotation (old backups are never deleted automatically).
+
+## ADR-024: Recording rules carry a `platform` label
+- **Decision:** `instance:{cpu,memory,disk}_utilisation:percent` is computed separately for Windows and for Linux, and each result is labelled `platform=windows|linux`. That keeps one alert per resource across both operating systems without promtool duplicate-rule lint errors.
+- **Memory:** Windows memory usage is based on `available_bytes` (free plus standby), not `free`, because Windows deliberately keeps free memory near zero.
+
+## ADR-025: Alert rule unit tests
+- **Decision:** `prometheus/tests/*.test.yml` (promtool) feeds synthetic series to the alerts that can't safely be triggered on a real laptop: CPU, memory, disk, TLS expiry, backups, endpoint down and PostgreSQL down. `validate.ps1` runs them.
+
+## ADR-026: Respect the `.env` read-deny rule
+- **Context:** The owner's Ruflo setup added `deny: Read(./.env)` and `Read(./.env.*)` for Claude Code.
+- **Decision:** New secrets go in `secrets/` files, which are git-ignored and mounted read-only. New image versions use the pinned defaults in `docker-compose.yml`. `validate.ps1` and `backup.ps1` resolve images through `docker compose config --images` instead of parsing `.env`.

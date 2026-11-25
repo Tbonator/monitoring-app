@@ -1,0 +1,36 @@
+# promtool rule unit tests for application alerts.
+rule_files:
+  - ../rules/application-alerts.yml
+
+evaluation_interval: 15s
+
+tests:
+  # Regression (Phase 4): an infrastructure exporter for the application being
+  # down (windows_exporter not installed) must NOT raise ApplicationDown.
+  - interval: 15s
+    input_series:
+      - series: 'up{job="funeral-back-office",kind="application",instance="host.docker.internal:8000",application="funeral-back-office",environment="development"}'
+        values: '1x20'
+      - series: 'up{job="windows",instance="host.docker.internal:9182",application="funeral-back-office",environment="development",host="dev-laptop",role="app-host"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ApplicationDown
+        exp_alerts: []
+
+  # Application scrape failing on consecutive scrapes -> critical.
+  - interval: 15s
+    input_series:
+      - series: 'up{job="funeral-back-office",kind="application",instance="host.docker.internal:8000",application="funeral-back-office",environment="development"}'
+        values: '1 1 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 45s
+        alertname: ApplicationDown
+        exp_alerts: []          # only one failed scrape so far
+      - eval_time: 90s
+        alertname: ApplicationDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: funeral-back-office, kind: application, instance: "host.docker.internal:8000", application: funeral-back-office, environment: development}
+            exp_annotations:
+              summary: "funeral-back-office (development) is down"
+              description: "Prometheus failed to scrape funeral-back-office in development on two or more consecutive attempts."

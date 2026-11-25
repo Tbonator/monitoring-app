@@ -1,6 +1,34 @@
-# Database alert rules.
-# The readiness-based DatabaseUnavailable alert lives in application-alerts.yml
-# because it is derived from the application's readiness metric.
-# Engine-level alerts require PostgreSQL Exporter (Phase 4). The Funeral Back
-# Office currently uses SQLite, which has no server process to export.
-groups: []
+# Database alert rules (Phase 4).
+# The readiness-based DatabaseUnavailable alert (application DB, SQLite) lives
+# in application-alerts.yml. These rules cover PostgreSQL servers monitored by
+# postgres-exporter (currently GlitchTip's database).
+
+groups:
+  - name: database-thresholds
+    rules:
+      - record: db:threshold:connection_saturation_percent
+        expr: vector(80)
+
+  - name: database-alerts
+    rules:
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL {{ $labels.database }} ({{ $labels.environment }}) unreachable"
+          description: "postgres-exporter cannot connect to {{ $labels.database }}."
+
+      - alert: PostgresConnectionSaturation
+        expr: |
+          100 * sum by (application, environment, database) (pg_stat_database_numbackends)
+            / on (application, environment, database) group_left
+              max by (application, environment, database) (pg_settings_max_connections)
+            > scalar(db:threshold:connection_saturation_percent)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL {{ $labels.database }} at {{ $value | printf \"%.0f\" }}% of max connections"
+          description: "Connection usage above 80% for 5 minutes."

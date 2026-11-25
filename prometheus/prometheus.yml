@@ -45,6 +45,89 @@ scrape_configs:
           application: monitoring-platform
           environment: development
 
+  # --- Phase 4: infrastructure -------------------------------------------------
+  # Docker Desktop VM = host of the monitoring stack.
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels:
+          application: monitoring-platform
+          environment: development
+          host: docker-desktop-vm
+          role: monitoring-host
+
+  # Windows laptop running the Funeral Back Office (windows_exporter MSI service,
+  # bound to 127.0.0.1:9182; reached via Docker Desktop loopback forwarding).
+  - job_name: windows
+    static_configs:
+      - targets: ["host.docker.internal:9182"]
+        labels:
+          application: funeral-back-office
+          environment: development
+          host: dev-laptop
+          role: app-host
+
+  # GlitchTip's PostgreSQL (read-only pg_monitor user).
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+        labels:
+          application: monitoring-platform
+          environment: development
+          database: glitchtip
+
+  - job_name: blackbox-exporter
+    static_configs:
+      - targets: ["blackbox-exporter:9115"]
+        labels:
+          application: monitoring-platform
+          environment: development
+
+  # Prometheus-side endpoint probes (independent of /metrics scraping and of
+  # Uptime Kuma). The target URL becomes the "instance" label.
+  - job_name: blackbox-http
+    metrics_path: /probe
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["http://host.docker.internal:8000/health/live/"]
+        labels: {application: funeral-back-office, environment: development, module: http_2xx, endpoint: live}
+      - targets: ["http://host.docker.internal:8000/health/ready/"]
+        labels: {application: funeral-back-office, environment: development, module: http_ready, endpoint: ready}
+      - targets: ["http://uptime-kuma:3001/"]
+        labels: {application: monitoring-platform, environment: development, module: http_2xx_follow, endpoint: health}
+      - targets:
+          - http://grafana:3000/api/health
+          - http://alertmanager:9093/-/healthy
+          - http://loki:3100/ready
+          - http://glitchtip:8000/_health/
+        labels: {application: monitoring-platform, environment: development, module: http_2xx, endpoint: health}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [module]
+        target_label: __param_module
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # TLS certificate expiry for HTTPS endpoints (empty until Phase 5).
+  - job_name: blackbox-tls
+    metrics_path: /probe
+    scrape_interval: 1h
+    params:
+      module: [https_tls]
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/tls-targets.yml"]
+        refresh_interval: 5m
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
   # Funeral Back Office System (Django running directly on the Windows host).
   # Inside a container, "localhost" is the container itself, NOT Windows;
   # host.docker.internal resolves to the Windows host (Docker Desktop).
@@ -59,3 +142,7 @@ scrape_configs:
         labels:
           application: funeral-back-office
           environment: development
+          # kind=application marks the app's own /metrics target (used by the
+          # ApplicationDown alert). Infrastructure exporters for the same
+          # application (e.g. windows) must NOT carry it.
+          kind: application

@@ -1,0 +1,144 @@
+# promtool rule unit tests (synthetic series; no real load is generated).
+# Run via scripts/validate.ps1, or:
+#   promtool test rules /etc/prometheus/tests/infrastructure-alerts.test.yml
+
+rule_files:
+  - ../rules/infrastructure-alerts.yml
+  - ../rules/database-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ---- Windows host: CPU 90% busy -> HighCpuUsage; CPU 50% -> nothing ----
+  - interval: 1m
+    input_series:
+      - series: 'windows_cpu_time_seconds_total{mode="idle",core="0,0",job="windows",instance="w:9182",application="funeral-back-office",environment="development",host="dev-laptop"}'
+        values: '0+6x20'      # 6 idle-seconds per 60s = 10% idle = 90% busy
+      - series: 'windows_cpu_time_seconds_total{mode="idle",core="0,0",job="windows",instance="w2:9182",application="funeral-back-office",environment="development",host="quiet-laptop"}'
+        values: '0+30x20'     # 50% busy
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: HighCpuUsage
+        exp_alerts:
+          - exp_labels: {severity: warning, platform: windows, application: funeral-back-office, environment: development, host: dev-laptop, instance: "w:9182"}
+            exp_annotations:
+              summary: "High CPU on dev-laptop (development): 90%"
+              description: "CPU utilisation above 85% for 5 minutes on dev-laptop."
+
+  # ---- Windows memory: available 10% -> HighMemoryUsage ----
+  - interval: 1m
+    input_series:
+      - series: 'windows_memory_available_bytes{job="windows",instance="w:9182",application="funeral-back-office",environment="development",host="dev-laptop"}'
+        values: '1x15'
+      - series: 'windows_memory_physical_total_bytes{job="windows",instance="w:9182",application="funeral-back-office",environment="development",host="dev-laptop"}'
+        values: '10x15'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: HighMemoryUsage
+        exp_alerts: []          # "for: 5m" not yet satisfied
+      - eval_time: 10m
+        alertname: HighMemoryUsage
+        exp_alerts:
+          - exp_labels: {severity: warning, platform: windows, job: windows, application: funeral-back-office, environment: development, host: dev-laptop, instance: "w:9182"}
+            exp_annotations:
+              summary: "High memory on dev-laptop (development): 90%"
+              description: "Memory utilisation above 85% for 5 minutes on dev-laptop."
+
+  # ---- Disk: C: 95% full -> DiskSpaceCritical; D: 50% -> nothing ----
+  - interval: 1m
+    input_series:
+      - series: 'windows_logical_disk_free_bytes{volume="C:",job="windows",instance="w:9182",host="dev-laptop",application="funeral-back-office",environment="development"}'
+        values: '5x20'
+      - series: 'windows_logical_disk_size_bytes{volume="C:",job="windows",instance="w:9182",host="dev-laptop",application="funeral-back-office",environment="development"}'
+        values: '100x20'
+      - series: 'windows_logical_disk_free_bytes{volume="D:",job="windows",instance="w:9182",host="dev-laptop",application="funeral-back-office",environment="development"}'
+        values: '50x20'
+      - series: 'windows_logical_disk_size_bytes{volume="D:",job="windows",instance="w:9182",host="dev-laptop",application="funeral-back-office",environment="development"}'
+        values: '100x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: DiskSpaceCritical
+        exp_alerts:
+          - exp_labels: {severity: critical, platform: windows, volume: "C:", job: windows, instance: "w:9182", host: dev-laptop, application: funeral-back-office, environment: development}
+            exp_annotations:
+              summary: "Disk C: on dev-laptop is 95% full"
+              description: "Disk utilisation above 90% on dev-laptop."
+
+  # ---- TLS certificate: 10 days left -> SslCertificateExpiringSoon ----
+  - interval: 1m
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="blackbox-tls",instance="https://example.test/"}'
+        values: '864000x20'   # epoch 864000 = 10 days after test start (t=0)
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: SslCertificateExpiringSoon
+        exp_alerts:
+          - exp_labels: {severity: warning, job: blackbox-tls, instance: "https://example.test/"}
+            exp_annotations:
+              summary: "TLS certificate for https://example.test/ expires in 10 days"
+              description: "Certificate expires in less than 14 days. Renew it."
+
+  # ---- Backups: last success at t=0; alert after 24h + 15m ----
+  # 1m samples: sparser samples go stale (5m lookback) and reset "for: 15m".
+  - interval: 1m
+    input_series:
+      - series: 'monitoring_backup_last_success_timestamp_seconds{job="node",application="monitoring-platform",environment="development"}'
+        values: '0x1560'
+      - series: 'monitoring_backup_last_run_success{job="node",application="monitoring-platform",environment="development"}'
+        values: '1x1560'
+    alert_rule_test:
+      - eval_time: 23h
+        alertname: BackupMissing
+        exp_alerts: []
+      - eval_time: 25h
+        alertname: BackupMissing
+        exp_alerts:
+          - exp_labels: {severity: critical, job: node, application: monitoring-platform, environment: development}
+            exp_annotations:
+              summary: "No successful monitoring backup within 24 hours"
+              description: "Last successful backup was 25.0 hours ago. Run scripts\\backup.ps1."
+      - eval_time: 25h
+        alertname: BackupFailed
+        exp_alerts: []
+
+  # ---- Backup run failed ----
+  - interval: 1m
+    input_series:
+      - series: 'monitoring_backup_last_run_success{job="node",application="monitoring-platform",environment="development"}'
+        values: '0x5'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: BackupFailed
+        exp_alerts:
+          - exp_labels: {severity: critical, job: node, application: monitoring-platform, environment: development}
+            exp_annotations:
+              summary: "Last monitoring backup run failed"
+              description: "scripts\\backup.ps1 reported a failure. See the console output of the last run."
+
+  # ---- Application endpoint probe failing -> critical ----
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="blackbox-http",instance="http://host.docker.internal:8000/health/live/",application="funeral-back-office",environment="development",endpoint="live",module="http_2xx"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ApplicationEndpointDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: blackbox-http, instance: "http://host.docker.internal:8000/health/live/", application: funeral-back-office, environment: development, endpoint: live, module: http_2xx}
+            exp_annotations:
+              summary: "funeral-back-office (development) live probe failing"
+              description: "Blackbox probe of http://host.docker.internal:8000/health/live/ failed on consecutive attempts."
+
+  # ---- PostgreSQL down ----
+  - interval: 1m
+    input_series:
+      - series: 'pg_up{job="postgres",database="glitchtip",application="monitoring-platform",environment="development"}'
+        values: '0x5'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: PostgresDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: postgres, database: glitchtip, application: monitoring-platform, environment: development}
+            exp_annotations:
+              summary: "PostgreSQL glitchtip (development) unreachable"
+              description: "postgres-exporter cannot connect to glitchtip."

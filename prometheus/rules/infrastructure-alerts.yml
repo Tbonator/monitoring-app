@@ -1,3 +1,155 @@
-# Infrastructure alert rules (CPU, memory, disk).
-# Placeholder: requires Node/Windows Exporter (Phase 4).
-groups: []
+# Infrastructure, endpoint, certificate and backup alerts (Phase 4).
+# Thresholds (CLAUDE.md section 13) are recording rules: tune them here only.
+
+groups:
+  - name: infrastructure-thresholds
+    rules:
+      - record: infra:threshold:cpu_percent
+        expr: vector(85)
+      - record: infra:threshold:memory_percent
+        expr: vector(85)
+      - record: infra:threshold:disk_percent
+        expr: vector(90)
+      - record: infra:threshold:ssl_expiry_days
+        expr: vector(14)
+      - record: infra:threshold:backup_max_age_hours
+        expr: vector(24)
+
+  - name: infrastructure-recording
+    rules:
+      # ---- Windows host (windows_exporter >= 0.32 metric names) ----
+      - record: instance:cpu_utilisation:percent
+        labels: {platform: windows}
+        expr: |
+          100 - 100 * avg by (application, environment, host, instance) (
+            rate(windows_cpu_time_seconds_total{mode="idle"}[5m]))
+      - record: instance:memory_utilisation:percent
+        labels: {platform: windows}
+        # "available" (free + standby), not "free": Windows keeps free memory
+        # deliberately low, so free-based usage would always look high.
+        expr: |
+          100 * (1 - windows_memory_available_bytes / windows_memory_physical_total_bytes)
+      - record: instance:disk_utilisation:percent
+        labels: {platform: windows}
+        expr: |
+          100 * (1 - windows_logical_disk_free_bytes{volume=~"[A-Z]:"}
+                   / windows_logical_disk_size_bytes{volume=~"[A-Z]:"})
+
+      # ---- Linux host (node_exporter): Docker Desktop VM ----
+      - record: instance:cpu_utilisation:percent
+        labels: {platform: linux}
+        expr: |
+          100 - 100 * avg by (application, environment, host, instance) (
+            rate(node_cpu_seconds_total{mode="idle"}[5m]))
+      - record: instance:memory_utilisation:percent
+        labels: {platform: linux}
+        expr: |
+          100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+      - record: instance:disk_utilisation:percent
+        labels: {platform: linux}
+        expr: |
+          100 * (1 - node_filesystem_avail_bytes{fstype=~"ext4|xfs|btrfs", mountpoint=~"/|/mnt/docker-desktop-disk"}
+                   / node_filesystem_size_bytes{fstype=~"ext4|xfs|btrfs", mountpoint=~"/|/mnt/docker-desktop-disk"})
+
+  - name: infrastructure-alerts
+    rules:
+      - alert: HighCpuUsage
+        expr: instance:cpu_utilisation:percent > scalar(infra:threshold:cpu_percent)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.host }} ({{ $labels.environment }}): {{ $value | printf \"%.0f\" }}%"
+          description: "CPU utilisation above 85% for 5 minutes on {{ $labels.host }}."
+
+      - alert: HighMemoryUsage
+        expr: instance:memory_utilisation:percent > scalar(infra:threshold:memory_percent)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory on {{ $labels.host }} ({{ $labels.environment }}): {{ $value | printf \"%.0f\" }}%"
+          description: "Memory utilisation above 85% for 5 minutes on {{ $labels.host }}."
+
+      - alert: DiskSpaceCritical
+        expr: instance:disk_utilisation:percent > scalar(infra:threshold:disk_percent)
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk {{ $labels.volume }}{{ $labels.mountpoint }} on {{ $labels.host }} is {{ $value | printf \"%.0f\" }}% full"
+          description: "Disk utilisation above 90% on {{ $labels.host }}."
+
+      - alert: InfrastructureExporterDown
+        expr: up{job=~"node|windows|postgres|blackbox-exporter"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Exporter {{ $labels.job }} on {{ $labels.instance }} is down"
+          description: "Infrastructure metrics from {{ $labels.job }} are not being collected."
+
+  - name: endpoint-alerts
+    rules:
+      # Prometheus-side probe of the application's liveness endpoint. Two
+      # consecutive failed probes (30s interval) => critical.
+      - alert: ApplicationEndpointDown
+        expr: probe_success{job="blackbox-http", application!="monitoring-platform"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.application }} ({{ $labels.environment }}) {{ $labels.endpoint }} probe failing"
+          description: "Blackbox probe of {{ $labels.instance }} failed on consecutive attempts."
+
+      - alert: MonitoringComponentDown
+        expr: probe_success{job="blackbox-http", application="monitoring-platform"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Monitoring component unhealthy: {{ $labels.instance }}"
+          description: "Health probe of a monitoring platform component is failing."
+
+      - alert: SslCertificateExpiringSoon
+        expr: (probe_ssl_earliest_cert_expiry{job="blackbox-tls"} - time()) / 86400 < scalar(infra:threshold:ssl_expiry_days)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "TLS certificate for {{ $labels.instance }} expires in {{ $value | printf \"%.0f\" }} days"
+          description: "Certificate expires in less than 14 days. Renew it."
+
+  - name: backup-alerts
+    rules:
+      # Written by scripts/backup.ps1 into exporters/textfile (node-exporter).
+      - alert: BackupMissing
+        expr: |
+          (time() - monitoring_backup_last_success_timestamp_seconds) / 3600
+            > scalar(infra:threshold:backup_max_age_hours)
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No successful monitoring backup within 24 hours"
+          description: "Last successful backup was {{ $value | printf \"%.1f\" }} hours ago. Run scripts\\backup.ps1."
+
+      # No backup status has ever been recorded (or the textfile is missing).
+      - alert: BackupStatusMissing
+        expr: absent(monitoring_backup_last_success_timestamp_seconds)
+        for: 1h
+        labels:
+          severity: critical
+          application: monitoring-platform
+          environment: development
+        annotations:
+          summary: "No monitoring backup status recorded"
+          description: "exporters/textfile/monitoring_backup.prom is missing: no backup has completed, or node-exporter cannot read it."
+
+      - alert: BackupFailed
+        expr: monitoring_backup_last_run_success == 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Last monitoring backup run failed"
+          description: "scripts\\backup.ps1 reported a failure. See the console output of the last run."

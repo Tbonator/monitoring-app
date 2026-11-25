@@ -9,6 +9,10 @@ secrets/
 
 # Backups and local data
 backups/
+downloads/
+# Generated textfile-collector metrics (written by scripts, read by node-exporter)
+exporters/textfile/*.prom
+exporters/textfile/*.prom.tmp
 *.tar
 *.tar.gz
 *.zip

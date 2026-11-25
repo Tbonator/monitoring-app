@@ -1,0 +1,41 @@
+# Blackbox Exporter modules (Phase 4).
+modules:
+  # Plain HTTP health endpoint: any 2xx within 5s.
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      valid_status_codes: []        # default: 2xx
+      follow_redirects: false
+      preferred_ip_protocol: ip4
+
+  # Web UIs whose root redirects (e.g. Uptime Kuma / -> /dashboard).
+  # Not used for application health endpoints, where a redirect means trouble.
+  http_2xx_follow:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      follow_redirects: true
+      preferred_ip_protocol: ip4
+
+  # Readiness endpoint: 2xx AND body reports status ok.
+  http_ready:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      preferred_ip_protocol: ip4
+      fail_if_body_not_matches_regexp:
+        - '"status":\s*"ok"'
+
+  # HTTPS certificate checks (SSL expiry alert). Fails if TLS is not used.
+  https_tls:
+    prober: http
+    timeout: 10s
+    http:
+      method: GET
+      fail_if_not_ssl: true
+      follow_redirects: true
+      preferred_ip_protocol: ip4

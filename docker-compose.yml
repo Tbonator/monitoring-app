@@ -27,6 +27,7 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
+      - ./prometheus/targets:/etc/prometheus/targets:ro
       # Scrape credentials (git-ignored). See docs/application-integration.md.
       - ./secrets:/etc/prometheus/secrets:ro
       - prometheus-data:/prometheus
@@ -255,7 +256,7 @@ services:
       VTASKS_CONCURRENCY: "4"
       DATABASE_POOL_MAX_SIZE: "5"
       LOG_LEVEL: WARNING
-      ALLOWED_HOSTS: localhost,127.0.0.1
+      ALLOWED_HOSTS: localhost,127.0.0.1,glitchtip   # 'glitchtip' = blackbox probe on the internal network
     ports:
       - "127.0.0.1:${GLITCHTIP_PORT:-8001}:8000"
     volumes:
@@ -278,6 +279,92 @@ services:
         limits:
           cpus: "1.0"
           memory: 512M
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # Phase 4: exporters (none publish ports; Prometheus scrapes them on the
+  # monitoring network)
+  # ---------------------------------------------------------------------------
+  node-exporter:
+    image: prom/node-exporter:${NODE_EXPORTER_VERSION:-v1.13.1}
+    container_name: node-exporter
+    restart: unless-stopped
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      # Exclude pseudo/WSL plumbing mounts. On Docker Desktop the real data disk
+      # is /mnt/docker-desktop-disk; on Linux hosts it is /.
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|tmp|var|host_mnt|parent-distro|usr/lib|mnt/host|mnt/wsl|var/lib/docker/.+)($|/)
+      - --collector.filesystem.fs-types-exclude=^(tmpfs|9p|rootfs|overlay|squashfs|nsfs|autofs|proc|sysfs|cgroup2?)$
+      - --collector.textfile.directory=/textfile
+      - --web.listen-address=:9100
+    # Docker Desktop: these are the Linux VM's /proc, /sys and root filesystem
+    # (the host of the monitoring stack), all read-only. Not privileged; no
+    # host PID/network namespace.
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+      - ./exporters/textfile:/textfile:ro
+    networks:
+      - monitoring-network
+    stop_grace_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+    logging: *default-logging
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:${BLACKBOX_EXPORTER_VERSION:-v0.29.1}
+    container_name: blackbox-exporter
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - ./exporters/blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - monitoring-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9115/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+    logging: *default-logging
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:${POSTGRES_EXPORTER_VERSION:-v0.21.1}
+    container_name: postgres-exporter
+    restart: unless-stopped
+    environment:
+      # Least-privilege role (pg_monitor, read-only): scripts/postgres-monitoring-user.sql
+      DATA_SOURCE_URI: glitchtip-postgres:5432/glitchtip?sslmode=disable
+      DATA_SOURCE_USER: monitoring
+      DATA_SOURCE_PASS_FILE: /run/secrets/pg-monitor-password
+    volumes:
+      - ./secrets/pg-monitor-password:/run/secrets/pg-monitor-password:ro
+    networks:
+      - monitoring-network
+    depends_on:
+      glitchtip-postgres:
+        condition: service_healthy
+    stop_grace_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
     logging: *default-logging
 
 networks:

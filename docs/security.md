@@ -40,6 +40,16 @@ The monitored Funeral Back Office System processes sensitive personal informatio
 
 **Limitation:** redaction is pattern-based and best effort. Free-text fields such as names are only removed where they appear in query strings. Code must not log personal data.
 
+## Controls added in Phase 4
+
+| Control | Implementation |
+|---|---|
+| Exporters not exposed | Node, Blackbox and PostgreSQL exporters publish no ports. Windows Exporter binds to 127.0.0.1:9182 and adds no firewall exception. |
+| Read-only host access | node-exporter mounts the VM's `/proc`, `/sys` and `/` as `:ro`. It is not privileged and has no host PID or network namespace. |
+| Least-privilege database account | The `monitoring` role has `pg_monitor`, read-only transactions and a 3-connection limit. Verified that it cannot read table data or write. The password is in `secrets/`. |
+| Verified installer | The windows_exporter MSI SHA-256 is checked against the GitHub release before install. |
+| Backups | Archives of all volumes, including GlitchTip events and logs (already redacted) and password hashes. They're kept in git-ignored `backups/`. They are not encrypted, so store them securely. |
+
 ## Funeral Back Office findings (outside monitoring scope; not changed)
 
 - The active `settings.py` hardcodes `SECRET_KEY` and has `DEBUG=True`. The Git-tracked snapshot reads the key from `DJANGO_SECRET_KEY`. Treat the hardcoded key as compromised before any hosted use.

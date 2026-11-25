@@ -105,7 +105,41 @@ Status key: ✅ done and verified · 🟡 partially done · ⬜ not started
 - GlitchTip admin: `GLITCHTIP_ADMIN_EMAIL` / `GLITCHTIP_ADMIN_PASSWORD` in `.env`. Change the password after the first login.
 - The old rotation-test files `funeral-back-office.log` and `.log.1` to `.log.5` remain in the app's `logs\` folder. They are no longer written to and are safe to delete.
 
-## Phases 4–5
+## Phase 4: Advanced monitoring
+
+| Task | Status | Notes |
+|---|---|---|
+| Infrastructure exporters: Docker VM | ✅ | Node Exporter v1.13.1. Read-only mounts, not privileged. CPU, memory and data disk. WSL mount noise filtered out. |
+| Infrastructure exporters: Windows host | 🟡 | Windows Exporter v0.32.1 MSI downloaded and SHA-256 verified. **The owner still needs to run `scripts\install-windows-exporter.ps1`, which shows a UAC prompt.** Scrape job, rules and panels are ready. |
+| PostgreSQL Exporter | ✅ | v0.21.1 on GlitchTip's DB, using the `monitoring` role (`pg_monitor`, read-only). Least privilege verified. |
+| Blackbox Exporter | ✅ | v0.29.1. Probes 2 app endpoints and 5 platform components, all passing. TLS-expiry job is ready (no HTTPS targets yet). |
+| Background workers | N/A | The funeral app has no workers, scheduled jobs or email sending |
+| Backups monitored | ✅ | `backup.ps1` covers all 8 volumes and writes status metrics. First real run: 91 MB in 177 s, status OK. |
+| Dashboard coverage | ✅ | Application Overview has an Infrastructure section (36 panels). Monitoring Platform Health is regenerated with host, PostgreSQL, backup and probe panels (27 panels). |
+| WSL memory cap | 🟡 | `%UserProfile%\.wslconfig` sets `memory=4GB`. **Not applied yet:** the owner will run `wsl --shutdown` when convenient. |
+
+### Phase 4 test results (2026-11-25)
+
+| Test | Result | Evidence |
+|---|---|---|
+| Configuration validation | PASS | `validate.ps1`, which now also runs promtool unit tests and resolves images through Compose |
+| Alert rule unit tests | PASS | HighCpu, HighMemory, DiskSpace, SslExpiry, BackupMissing, BackupFailed, ApplicationEndpointDown, PostgresDown and the ApplicationDown regression |
+| Scrape targets up | PASS (15/16) | `windows` is down until the exporter is installed |
+| Blackbox probes | PASS (7/7) | The Uptime Kuma probe first failed on its `/` to `/dashboard` redirect and was fixed with a redirect-following module |
+| PostgreSQL monitoring user is least privilege | PASS | `pg_monitor` only. Reading table data was denied and writing was denied. |
+| Backup run writes metrics, and Prometheus reads them | PASS | Backup age is visible. The textfile is atomic and git-ignored. |
+| Dashboard queries | PASS | All return data except the 6 Windows-host panels, which wait on the install |
+| **Bug found:** `ApplicationDown` fired for a down infrastructure exporter | FIXED | The rule now matches `kind="application"` only. Covered by a regression unit test. |
+| Windows host metrics | NOT TESTED | Waiting for the MSI install |
+
+### Phase 4 open items
+- Run `scripts\install-windows-exporter.ps1`, then verify the windows target, the panels and that it listens only on 127.0.0.1.
+- Run `wsl --shutdown` to apply the 4 GB cap. This briefly stops all containers, including artex.
+- Backups aren't scheduled. A daily Windows scheduled task needs owner approval. Note that the monitoring stack stops for about 3 minutes during each backup.
+- Old backups are never deleted automatically.
+- Docker Desktop's VM disk is a 1 TB virtual disk that grows on demand, while the physical C: drive is 498 GB. The Windows C: disk alert is the real guard against running out of space.
+
+## Phase 5
 
 See CLAUDE.md §16.
 

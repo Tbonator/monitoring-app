@@ -32,7 +32,9 @@ groups:
       # (scrape_interval 15s) => for: 30s. Uptime Kuma separately reports
       # user-facing availability.
       - alert: ApplicationDown
-        expr: up{application!="monitoring-platform"} == 0
+        # Only the application's own /metrics targets (kind="application"), not
+        # infrastructure exporters that share the application label.
+        expr: up{kind="application"} == 0
         for: 30s
         labels:
           severity: critical

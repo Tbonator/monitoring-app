@@ -98,4 +98,4 @@ These routes exist only when `DJANGO_SETTINGS_MODULE=monitoring_test_settings`. 
 
 ## Adding another application
 
-See [integrations/django/README.md](../integrations/django/README.md). Every target must carry `application` and `environment` labels, and the dashboard and alerts pick it up automatically.
+See [integrations/django/README.md](../integrations/django/README.md). Every target must carry `application` and `environment` labels, and the dashboard and alerts pick it up automatically. The application's own `/metrics` target must also carry `kind: application`, which `ApplicationDown` matches on. Infrastructure exporters for the same application, such as `windows`, must not carry `kind`.

@@ -1,0 +1,8 @@
+# HTTPS endpoints whose certificate expiry is monitored (blackbox https_tls).
+# Empty during local development: nothing is served over HTTPS yet.
+# Add entries when HTTPS is introduced (Phase 5), e.g.:
+# - targets: ["https://backoffice.example.co.za/health/live/"]
+#   labels:
+#     application: funeral-back-office
+#     environment: production
+[]

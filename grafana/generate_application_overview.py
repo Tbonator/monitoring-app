@@ -7,87 +7,11 @@ and verify with tests/check_dashboard_queries.py.
 """
 import json, sys
 
-DS = {"type": "prometheus", "uid": "prometheus"}
-LOKI = {"type": "loki", "uid": "loki"}
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from dashboard_lib import *  # noqa: E402,F401,F403
+
 F = 'application=~"$application", environment=~"$environment"'
-_id = [0]
-
-
-def nid():
-    _id[0] += 1
-    return _id[0]
-
-
-def tgt(expr, legend="", ref="A", instant=False, fmt=None):
-    t = {"refId": ref, "expr": expr, "legendFormat": legend, "datasource": DS}
-    if instant:
-        t["instant"] = True
-        t["range"] = False
-    if fmt:
-        t["format"] = fmt
-    return t
-
-
-def row(title, y):
-    return {"id": nid(), "type": "row", "title": title, "collapsed": False,
-            "gridPos": {"h": 1, "w": 24, "x": 0, "y": y}, "panels": []}
-
-
-def steps(*pairs):
-    return {"mode": "absolute", "steps": [{"color": c, "value": v} for c, v in pairs]}
-
-
-def stat(title, expr, x, y, w=4, h=4, unit="short", th=None, mappings=None, desc="", decimals=None, legend=""):
-    d = {"unit": unit, "thresholds": th or steps(("text", None))}
-    if mappings:
-        d["mappings"] = mappings
-    if decimals is not None:
-        d["decimals"] = decimals
-    return {"id": nid(), "type": "stat", "title": title, "description": desc, "datasource": DS,
-            "gridPos": {"h": h, "w": w, "x": x, "y": y},
-            "targets": [tgt(expr, legend)],
-            "fieldConfig": {"defaults": d, "overrides": []},
-            "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center",
-                        "textMode": "value_and_name" if legend else "value",
-                        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False}}}
-
-
-def ts(title, targets, x, y, w=12, h=8, unit="short", desc="", stack=False, th=None):
-    custom = {"drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "never",
-              "spanNulls": False}
-    if stack:
-        custom["stacking"] = {"mode": "normal", "group": "A"}
-    d = {"unit": unit, "custom": custom}
-    if th:
-        d["thresholds"] = th
-        custom["thresholdsStyle"] = {"mode": "dashed"}
-    return {"id": nid(), "type": "timeseries", "title": title, "description": desc, "datasource": DS,
-            "gridPos": {"h": h, "w": w, "x": x, "y": y}, "targets": targets,
-            "fieldConfig": {"defaults": d, "overrides": []},
-            "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]},
-                        "tooltip": {"mode": "multi", "sort": "desc"}}}
-
-
-def table(title, expr, x, y, w=12, h=8, unit="short", desc="", hide=None, rename=None):
-    excl = {k: True for k in (hide or [])}
-    return {"id": nid(), "type": "table", "title": title, "description": desc, "datasource": DS,
-            "gridPos": {"h": h, "w": w, "x": x, "y": y},
-            "targets": [tgt(expr, instant=True, fmt="table")],
-            "fieldConfig": {"defaults": {"unit": unit}, "overrides": []},
-            "transformations": [{"id": "organize", "options": {"excludeByName": excl,
-                                                                "renameByName": rename or {}}}],
-            "options": {"showHeader": True, "sortBy": [{"displayName": (rename or {}).get("Value", "Value"), "desc": True}]}}
-
-
-def text(title, content, x, y, w=24, h=3):
-    return {"id": nid(), "type": "text", "title": title, "gridPos": {"h": h, "w": w, "x": x, "y": y},
-            "options": {"mode": "markdown", "content": content}}
-
-
-UPDOWN = [{"type": "value", "options": {"0": {"text": "DOWN", "color": "red"},
-                                         "1": {"text": "UP", "color": "green"}}}]
-READY = [{"type": "value", "options": {"0": {"text": "NOT READY", "color": "red"},
-                                        "1": {"text": "READY", "color": "green"}}}]
 
 RATE = f'sum(rate(django_http_requests_total_by_view_transport_method_total{{{F}}}[$__rate_interval]))'
 ERR5 = f'sum(rate(django_http_responses_total_by_status_view_method_total{{{F}, status=~"5.."}}[$__rate_interval]))'
@@ -189,12 +113,38 @@ panels.append({
                 "enableLogDetails": True, "dedupStrategy": "none"},
 })
 y += 10
-panels.append(row("Infrastructure", y)); y += 1
-panels.append(text("Infrastructure",
-                   "CPU, memory, disk and container-health panels are added in **Phase 4** when "
-                   "Windows Exporter / Node Exporter data sources exist. No placeholder values are shown.",
-                   0, y))
-y += 3
+panels.append(row("Infrastructure (application host)", y)); y += 1
+PCT = steps(("green", None), ("orange", 70), ("red", 85))
+panels += [
+    stat("Host CPU", f'max(instance:cpu_utilisation:percent{{{F}}})', 0, y, w=4, unit="percent",
+         decimals=0, th=PCT, desc="5-minute average. Alert above 85% for 5 min. Source: windows_exporter."),
+    stat("Host memory", f'max(instance:memory_utilisation:percent{{{F}}})', 4, y, w=4, unit="percent",
+         decimals=0, th=PCT, desc="Used = total - available. Alert above 85% for 5 min."),
+    stat("Fullest disk", f'max(instance:disk_utilisation:percent{{{F}}})', 8, y, w=4, unit="percent",
+         decimals=0, th=steps(("green", None), ("orange", 80), ("red", 90)), desc="Alert above 90%."),
+    stat("Endpoint probes passing", f'sum(probe_success{{job="blackbox-http", {F}}}) / count(probe_success{{job="blackbox-http", {F}}})',
+         12, y, w=4, unit="percentunit", decimals=0, th=steps(("red", None), ("orange", 0.99), ("green", 1)),
+         desc="Prometheus-side Blackbox probes of the health endpoints (independent of /metrics and of Uptime Kuma)."),
+    stat("Exporters up", f'min(up{{job=~"windows|node|blackbox-http", {F}}})', 16, y, w=4, mappings=UPDOWN,
+         th=steps(("red", None), ("green", 1)), desc="0 = infrastructure metrics are not being collected."),
+    stat("Probe duration (max)", f'max(probe_duration_seconds{{job="blackbox-http", {F}}})', 20, y, w=4, unit="s",
+         decimals=3, th=steps(("green", None), ("orange", 1), ("red", 3))),
+]
+y += 4
+panels += [
+    ts("CPU and memory utilisation",
+       [tgt(f'instance:cpu_utilisation:percent{{{F}}}', "CPU {{host}}", "A"),
+        tgt(f'instance:memory_utilisation:percent{{{F}}}', "Memory {{host}}", "B")],
+       0, y, w=12, unit="percent", th=steps(("green", None), ("red", 85))),
+    ts("Disk utilisation by volume",
+       [tgt(f'instance:disk_utilisation:percent{{{F}}}', "{{host}} {{volume}}{{mountpoint}}")],
+       12, y, w=12, unit="percent", th=steps(("green", None), ("red", 90))),
+]
+y += 8
+panels.append(table("Endpoint probes", f'probe_success{{job="blackbox-http", {F}}}', 0, y, w=24, h=6,
+                    hide=["Time", "__name__", "job", "module", "application", "environment"],
+                    rename={"instance": "Endpoint", "endpoint": "Type", "Value": "Up (1/0)"}))
+y += 6
 panels.append(row("Incidents", y)); y += 1
 panels += [
     stat("Firing alerts", f'count(ALERTS{{alertstate="firing", {F}}}) or vector(0)', 0, y, w=4, h=8,

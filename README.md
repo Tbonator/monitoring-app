@@ -2,7 +2,7 @@
 
 A standalone, open-source technical monitoring platform. The first application it will monitor is the **Funeral Back Office System** (a Django application).
 
-**Current phase:** Phase 3 (error tracking and logging) is complete. See [TASKS.md](TASKS.md) for status.
+**Current phase:** Phase 4 (advanced monitoring) is implemented. The Windows Exporter install and the WSL memory cap are still pending; see [TASKS.md](TASKS.md).
 
 | Service | URL (local only) | Purpose |
 |---|---|---|
@@ -13,6 +13,8 @@ A standalone, open-source technical monitoring platform. The first application i
 | GlitchTip 6.2.6 | http://localhost:8001 | Exception tracking (Sentry-compatible) |
 | Loki 3.7.10 | http://localhost:3100 (API only) | Log storage. Browse it in Grafana under Explore or the dashboard's Logs section. |
 | Alloy v1.22.0 | internal only | Ships the app's JSON log files to Loki |
+| Node / Blackbox / PostgreSQL exporters | internal only | Docker host metrics, endpoint and TLS probes, and GlitchTip DB metrics |
+| Windows Exporter v0.32.1 | 127.0.0.1:9182 (Windows service) | Laptop CPU, memory and disk. Install with `scripts\install-windows-exporter.ps1`. |
 
 Monitored application: Funeral Back Office, Django on `127.0.0.1:8000`. To run it with monitoring enabled:
 
