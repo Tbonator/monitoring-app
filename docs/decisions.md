@@ -115,3 +115,8 @@
 ## ADR-026: Respect the `.env` read-deny rule
 - **Context:** The owner's Ruflo setup added `deny: Read(./.env)` and `Read(./.env.*)` for Claude Code.
 - **Decision:** New secrets go in `secrets/` files, which are git-ignored and mounted read-only. New image versions use the pinned defaults in `docker-compose.yml`. `validate.ps1` and `backup.ps1` resolve images through `docker compose config --images` instead of parsing `.env`.
+
+## ADR-027: windows_exporter MSI installs with `ADDLOCAL=DefaultFeature`, not `REMOVE=FirewallException`
+- **Context:** Installing with `REMOVE=FirewallException` reported success (MsiInstaller event 1033), but the install log showed `REMOVE = ALL` and every feature, `DefaultFeature` included, was skipped. The result was a registered product with **no files and no service**. The README doesn't document this behaviour.
+- **Decision:** `scripts/install-windows-exporter.ps1` passes `ADDLOCAL=DefaultFeature`, so the FirewallException feature is never selected. It also cleans up an empty earlier registration in the same UAC prompt, and fails loudly if no service exists afterwards.
+- **Verified:** the service runs automatically, listens on 127.0.0.1:9182 only, and 0 firewall rules exist.

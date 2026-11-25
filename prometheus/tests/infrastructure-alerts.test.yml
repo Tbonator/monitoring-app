@@ -25,6 +25,32 @@ tests:
               summary: "High CPU on dev-laptop (development): 90%"
               description: "CPU utilisation above 85% for 5 minutes on dev-laptop."
 
+  # ---- Anti-flapping: keep_firing_for 5m after CPU recovers ----
+  # 90% busy until t=10m, then 10% busy. The 5m-average drops below 85% at
+  # ~t=11m; the alert must still fire at 14m and be resolved by 18m.
+  - interval: 1m
+    input_series:
+      - series: 'windows_cpu_time_seconds_total{mode="idle",core="0,0",job="windows",instance="w:9182",application="funeral-back-office",environment="development",host="dev-laptop"}'
+        values: '0+6x10 114+54x15'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: HighCpuUsage
+        exp_alerts:
+          - exp_labels: {severity: warning, platform: windows, application: funeral-back-office, environment: development, host: dev-laptop, instance: "w:9182"}
+            exp_annotations:
+              summary: "High CPU on dev-laptop (development): 90%"
+              description: "CPU utilisation above 85% for 5 minutes on dev-laptop."
+      - eval_time: 14m
+        alertname: HighCpuUsage
+        exp_alerts:
+          - exp_labels: {severity: warning, platform: windows, application: funeral-back-office, environment: development, host: dev-laptop, instance: "w:9182"}
+            exp_annotations:
+              summary: "High CPU on dev-laptop (development): 90%"
+              description: "CPU utilisation above 85% for 5 minutes on dev-laptop."
+      - eval_time: 18m
+        alertname: HighCpuUsage
+        exp_alerts: []
+
   # ---- Windows memory: available 10% -> HighMemoryUsage ----
   - interval: 1m
     input_series:

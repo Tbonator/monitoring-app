@@ -56,6 +56,9 @@ groups:
       - alert: HighCpuUsage
         expr: instance:cpu_utilisation:percent > scalar(infra:threshold:cpu_percent)
         for: 5m
+        # Anti-flapping: once firing, stay firing until the condition has been
+        # clear for 5 minutes (observed: a 15s fire/resolve near 85%).
+        keep_firing_for: 5m
         labels:
           severity: warning
         annotations:
@@ -65,6 +68,7 @@ groups:
       - alert: HighMemoryUsage
         expr: instance:memory_utilisation:percent > scalar(infra:threshold:memory_percent)
         for: 5m
+        keep_firing_for: 5m           # anti-flapping (see HighCpuUsage)
         labels:
           severity: warning
         annotations:

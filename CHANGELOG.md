@@ -21,6 +21,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 - `ApplicationDown` fired when an infrastructure exporter carrying the application label was down. It now matches `kind="application"` targets only.
+- `install-windows-exporter.ps1` used `REMOVE=FirewallException`, which this MSI turns into `REMOVE=ALL`, producing an empty install with no service. It now uses `ADDLOCAL=DefaultFeature` (ADR-027). Windows Exporter is installed and verified.
+- HighCpuUsage and HighMemoryUsage flapped near the threshold. They now use `keep_firing_for: 5m`, with a unit test.
 
 ## [0.3.0] - 2026-11-25 - Phase 3: Error tracking and logging
 
