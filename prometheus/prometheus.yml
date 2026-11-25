@@ -1,0 +1,37 @@
+# Prometheus configuration - Phase 1
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: application-monitoring
+    environment: development
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+# Alertmanager is introduced in Phase 2.
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  # Prometheus self-monitoring (scrape availability of the monitoring platform itself).
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          application: monitoring-platform
+          environment: development
+
+  # Phase 2: Funeral Back Office System (Django on the Windows host).
+  # Inside a container, "localhost" is the container itself, NOT Windows.
+  # Use host.docker.internal to reach the Windows host.
+  # - job_name: funeral-back-office
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ["host.docker.internal:8000"]
+  #       labels:
+  #         application: funeral-back-office
+  #         environment: development

@@ -1,0 +1,3 @@
+# Database alert rules.
+# Placeholder: requires readiness metrics (Phase 2) and PostgreSQL Exporter (Phase 4).
+groups: []

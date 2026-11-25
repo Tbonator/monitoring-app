@@ -1,0 +1,1 @@
+﻿# Phase 2 placeholder - pinned django-prometheus version will be added after reviewing the target application.

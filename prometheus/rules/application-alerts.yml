@@ -1,0 +1,4 @@
+# Application alert rules.
+# Phase 1: placeholder only. Rules are added in Phase 2 once application
+# metrics exist and Alertmanager is introduced.
+groups: []

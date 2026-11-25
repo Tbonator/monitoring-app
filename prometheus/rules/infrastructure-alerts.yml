@@ -1,0 +1,3 @@
+# Infrastructure alert rules (CPU, memory, disk).
+# Placeholder: requires Node/Windows Exporter (Phase 4).
+groups: []
