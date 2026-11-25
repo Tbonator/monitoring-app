@@ -1,0 +1,2 @@
+# No Windows hosts in production (the app server is Linux; see node.yml).
+[]

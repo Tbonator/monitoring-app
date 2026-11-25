@@ -1,0 +1,9 @@
+# PRODUCTION targets. Replace the placeholders:
+#   APP_SERVER_PRIVATE_IP   private/VPN address of the Funeral Back Office server
+#   *.example.co.za         public hostnames
+# Scraped over the private network; the bearer token remains a second layer.
+- targets: ["APP_SERVER_PRIVATE_IP:8000"]
+  labels:
+    application: funeral-back-office
+    environment: production
+    kind: application

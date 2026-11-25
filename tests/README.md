@@ -12,6 +12,9 @@ These tests are for development only. Never run them against production.
 | Redaction rules (fake data) | `& $py tests\test_redaction.py`, with `$env:FUNERAL_APP_DIR` set |
 | Daily log files: switch, prune, ingest | `& $py tests\test_log_rotation.py`, with `$env:FUNERAL_APP_DIR` set |
 | End-to-end privacy (GlitchTip and Loki) | Start the app with `.\scripts\run-funeral-app.ps1 -TestMode`, then run `python -I tests\test_privacy_end_to_end.py` |
+| Production HTTPS overlay, local (16 checks; restores dev config afterwards) | `.\tests\test_https_prod_overlay.ps1` |
+| Failure simulation: outages, alerts, recovery, no log loss (local only, about 10 min) | `.\tests\failure_simulation.ps1` |
+| Restore drill (temporary volumes only) | `.\scripts\restore.ps1 -BackupDir .\backups\<timestamp>` |
 | Readiness reports a database failure (503, no leaks) | see below |
 | HTTP 500 and slow-request metrics and alerts | see below |
 

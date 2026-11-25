@@ -1,0 +1,7 @@
+# Windows laptop running the Funeral Back Office (windows_exporter service on 127.0.0.1:9182).
+- targets: ["host.docker.internal:9182"]
+  labels:
+    application: funeral-back-office
+    environment: development
+    host: dev-laptop
+    role: app-host

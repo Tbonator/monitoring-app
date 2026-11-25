@@ -1,0 +1,107 @@
+# PRODUCTION overlay for the monitoring server (Phase 5).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod up -d
+#
+# Adds Caddy (HTTPS for Grafana + GlitchTip only), production targets,
+# retention, secure cookies and e-mail alerting. Every other port stays bound
+# to 127.0.0.1 on the server (reach it with an SSH tunnel). See docs/deployment.md.
+
+services:
+  caddy:
+    image: caddy:${CADDY_VERSION:-2.11.9-alpine}
+    container_name: caddy
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    # CADDY_BIND: 0.0.0.0 on the server (public HTTPS); 127.0.0.1 for local tests.
+    ports:
+      - "${CADDY_BIND:-0.0.0.0}:80:80"
+      - "${CADDY_BIND:-0.0.0.0}:443:443"
+      - "${CADDY_BIND:-0.0.0.0}:443:443/udp"
+    environment:
+      GRAFANA_DOMAIN: ${GRAFANA_DOMAIN:?GRAFANA_DOMAIN must be set in .env.prod}
+      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:?GLITCHTIP_DOMAIN must be set in .env.prod}
+      CADDY_TLS: ${CADDY_TLS:?CADDY_TLS must be set (ACME e-mail, or "internal" for tests)}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data          # certificates + ACME account: back up
+      - caddy-config:/config
+    networks:
+      - monitoring-network
+    depends_on:
+      - grafana
+      - glitchtip
+    healthcheck:
+      # Internal :8080/healthz (not published). Port 80 can't be probed: every
+      # request there is redirected to HTTPS, and 127.0.0.1 has no certificate.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  # Targets come from PROMETHEUS_TARGETS_DIR=./prometheus/targets/production (.env.prod).
+  prometheus:
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+
+  grafana:
+    environment:
+      GF_SERVER_ROOT_URL: https://${GRAFANA_DOMAIN}
+      GF_SERVER_DOMAIN: ${GRAFANA_DOMAIN}
+      GF_SERVER_ENFORCE_DOMAIN: "true"
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_STRICT_TRANSPORT_SECURITY: "true"
+      GF_SECURITY_CONTENT_SECURITY_POLICY: "true"
+      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "false"
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
+      GF_AUTH_LOGIN_MAXIMUM_INACTIVE_LIFETIME_DURATION: 8h
+      GF_AUTH_LOGIN_MAXIMUM_LIFETIME_DURATION: 1d
+      GF_USERS_DEFAULT_ROLE: Viewer
+
+  glitchtip:
+    environment:
+      GLITCHTIP_DOMAIN: https://${GLITCHTIP_DOMAIN}
+      ALLOWED_HOSTS: ${GLITCHTIP_DOMAIN},localhost,127.0.0.1,glitchtip
+      CSRF_TRUSTED_ORIGINS: https://${GLITCHTIP_DOMAIN}
+      DEFAULT_FROM_EMAIL: ${GLITCHTIP_FROM_EMAIL:-glitchtip@localhost}
+      # smtp://user:password@host:587 - kept in .env.prod (never in Git)
+      EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-consolemail://}
+
+  alertmanager:
+    volumes:   # merged by target path: replaces the dev config file
+      - ./alertmanager/alertmanager.prod.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./secrets/smtp-password:/etc/alertmanager/secrets/smtp-password:ro
+
+  loki:
+    # On the monitoring server Loki also listens on the PRIVATE interface so
+    # Alloy on the app server can push logs. Never bind this to a public IP.
+    ports:   # added to the base 127.0.0.1 binding
+      - "${LOKI_PRIVATE_BIND:?LOKI_PRIVATE_BIND (private IP of this server) must be set}:${LOKI_PRIVATE_PORT:-3100}:3100"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+
+  # In production Alloy runs on the APP server (deploy/app-server/), next to
+  # the log files. The local-only collector is disabled here.
+  alloy:
+    profiles: ["local-logs"]
+
+volumes:
+  caddy-data:
+    name: monitoring-caddy-data
+  caddy-config:
+    name: monitoring-caddy-config

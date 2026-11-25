@@ -1,0 +1,7 @@
+# GlitchTip's PostgreSQL. When the app moves to PostgreSQL, add its exporter here
+# with a pg_monitor user (scripts/postgres-monitoring-user.sql).
+- targets: ["postgres-exporter:9187"]
+  labels:
+    application: monitoring-platform
+    environment: production
+    database: glitchtip

@@ -1,0 +1,10 @@
+# PRODUCTION targets. Replace the placeholders:
+#   APP_SERVER_PRIVATE_IP   private/VPN address of the Funeral Back Office server
+#   *.example.co.za         public hostnames
+# Public HTTPS endpoints whose certificate expiry is checked (alert < 14 days).
+- targets:
+    - https://grafana.example.co.za/api/health
+    - https://errors.example.co.za/_health/
+  labels: {application: monitoring-platform, environment: production}
+- targets: ["https://backoffice.example.co.za/health/live/"]
+  labels: {application: funeral-back-office, environment: production}

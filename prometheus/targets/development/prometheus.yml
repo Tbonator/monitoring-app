@@ -1,0 +1,5 @@
+# Development targets (local laptop).
+- targets: ["localhost:9090"]
+  labels:
+    application: monitoring-platform
+    environment: development

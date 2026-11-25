@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.0] - 2026-11-26 - Phase 5: Production readiness
+
+### Added
+- `docker-compose.prod.yml`, a production overlay. It adds Caddy 2.11.9 for HTTPS (Grafana and GlitchTip only) and HTTPS-only Grafana and GlitchTip settings, and switches to production targets, retention and email alerting. Loki gets a private-IP binding, and the local Alloy container is disabled.
+- `caddy/Caddyfile`: security headers, an access log with query strings, cookies and Authorization removed, and an internal health endpoint.
+- `prometheus/targets/{development,production}/`: per-environment scrape targets (ADR-029).
+- `alertmanager/alertmanager.prod.yml` (email, with the password in `secrets/`) and `deploy/production.env.example`.
+- `deploy/app-server/`: Alloy and node-exporter for the production app server, on the private network.
+- `scripts/restore.ps1` (drill and live), `scripts/backup.sh` (with retention) and `scripts/restore.sh`.
+- Tests: `test_https_prod_overlay.ps1` (16 checks) and `failure_simulation.ps1`.
+- Docs: a full `docs/deployment.md` and a new `docs/security-review.md`.
+- `validate.ps1` now also checks the production overlay, the Caddyfile, `alertmanager.prod.yml`, the app-server bundle and the target files for both environments.
+
+### Changed
+- Loki retention is configurable through `LOKI_RETENTION_PERIOD` (`-config.expand-env`).
+- All services have `no-new-privileges`, and Blackbox Exporter runs as `nobody`.
+- Alloy retries for about 30 minutes before dropping logs (ADR-032).
+
+### Fixed (found by Phase 5 tests)
+- The Caddy access log recorded full query strings, because the `query` filter has no wildcard.
+- The Caddy health check probed a port that always redirects to HTTPS.
+- Alloy dropped logs after about 8.5 minutes of Loki outage.
+- Test-script bugs: case-insensitive `$R`/`$r` and `$env` clashes, a `$t0` scope bug, and SQLite `mode=ro` on a WAL database.
+
 ## [0.4.0] - 2026-11-25 - Phase 4: Advanced monitoring
 
 ### Added

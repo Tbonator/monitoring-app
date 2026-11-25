@@ -1,0 +1,41 @@
+# Alertmanager - PRODUCTION (Phase 5): e-mail notifications.
+#
+# Replace the placeholders before deploying. The SMTP password is read from
+# secrets/smtp-password (mounted read-only); it is never stored in this file.
+# Do NOT send real notifications during tests without approval (CLAUDE.md 13).
+
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: "smtp.example.co.za:587"          # PLACEHOLDER
+  smtp_from: "monitoring@example.co.za"              # PLACEHOLDER
+  smtp_auth_username: "monitoring@example.co.za"     # PLACEHOLDER
+  smtp_auth_password_file: /etc/alertmanager/secrets/smtp-password
+  smtp_require_tls: true
+
+route:
+  receiver: ops-email
+  group_by: ["alertname", "application", "environment"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h               # suppress repeats of an ongoing alert
+  routes:
+    # Critical alerts: shorter repeat so they are not forgotten.
+    - matchers: ['severity="critical"']
+      receiver: ops-email
+      repeat_interval: 1h
+
+inhibit_rules:
+  - source_matchers: ['alertname=~"ApplicationDown|ApplicationEndpointDown"']
+    target_matchers: ['severity=~"warning|critical"', 'alertname!~"ApplicationDown|ApplicationEndpointDown"']
+    equal: ["application", "environment"]
+  - source_matchers: ['severity="critical"']
+    target_matchers: ['severity="warning"']
+    equal: ["alertname", "application", "environment"]
+
+receivers:
+  - name: ops-email
+    email_configs:
+      - to: "ops-team@example.co.za"                # PLACEHOLDER - recipients
+        send_resolved: true                         # recovery notifications
+        headers:
+          Subject: '[{{ .Status | toUpper }}] {{ .CommonLabels.severity }} {{ .CommonLabels.alertname }} - {{ .CommonLabels.application }} ({{ .CommonLabels.environment }})'

@@ -1,0 +1,7 @@
+# Docker Desktop VM = host of the monitoring stack.
+- targets: ["node-exporter:9100"]
+  labels:
+    application: monitoring-platform
+    environment: development
+    host: docker-desktop-vm
+    role: monitoring-host

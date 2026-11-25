@@ -1,0 +1,9 @@
+# PRODUCTION targets. Replace the placeholders:
+#   APP_SERVER_PRIVATE_IP   private/VPN address of the Funeral Back Office server
+#   *.example.co.za         public hostnames
+# Alloy runs on the APP server (tails the app's log files) - deploy/app-server/.
+- targets: ["APP_SERVER_PRIVATE_IP:12345"]
+  labels:
+    application: funeral-back-office
+    environment: production
+    host: app-server

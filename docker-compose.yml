@@ -15,6 +15,7 @@ services:
     image: prom/prometheus:${PROMETHEUS_VERSION:-v3.16.0}
     container_name: prometheus
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -27,7 +28,8 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
-      - ./prometheus/targets:/etc/prometheus/targets:ro
+      # Environment-specific scrape targets (development | production).
+      - ${PROMETHEUS_TARGETS_DIR:-./prometheus/targets/development}:/etc/prometheus/targets:ro
       # Scrape credentials (git-ignored). See docs/application-integration.md.
       - ./secrets:/etc/prometheus/secrets:ro
       - prometheus-data:/prometheus
@@ -54,6 +56,7 @@ services:
     image: prom/alertmanager:${ALERTMANAGER_VERSION:-v0.35.1}
     container_name: alertmanager
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
@@ -86,6 +89,7 @@ services:
     image: grafana/grafana:${GRAFANA_VERSION:-13.3.2}
     container_name: grafana
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER must be set in .env}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set in .env}
@@ -129,6 +133,7 @@ services:
     image: louislam/uptime-kuma:${UPTIME_KUMA_VERSION:-2.5.12}
     container_name: uptime-kuma
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     ports:
       - "127.0.0.1:${UPTIME_KUMA_PORT:-3001}:3001"
     volumes:
@@ -154,7 +159,10 @@ services:
     image: grafana/loki:${LOKI_VERSION:-3.7.10}
     container_name: loki
     restart: unless-stopped
-    command: ["-config.file=/etc/loki/loki-config.yml"]
+    security_opt: ["no-new-privileges:true"]
+    command: ["-config.file=/etc/loki/loki-config.yml", "-config.expand-env=true"]
+    environment:
+      LOKI_RETENTION_PERIOD: ${LOKI_RETENTION_PERIOD:-168h}   # 7 days (dev default)
     ports:
       - "127.0.0.1:${LOKI_PORT:-3100}:3100"
     volumes:
@@ -177,6 +185,7 @@ services:
     image: grafana/alloy:${ALLOY_VERSION:-v1.22.0}
     container_name: alloy
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     command:
       - run
       - /etc/alloy/config.alloy
@@ -212,6 +221,7 @@ services:
     image: postgres:${GLITCHTIP_POSTGRES_VERSION:-18.7}
     container_name: glitchtip-postgres
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     command: ["postgres", "-c", "max_locks_per_transaction=512"]
     environment:
       POSTGRES_USER: glitchtip
@@ -240,6 +250,7 @@ services:
     image: glitchtip/glitchtip:${GLITCHTIP_VERSION:-6.2.6}
     container_name: glitchtip
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     environment:
       SERVER_ROLE: all_in_one
       PORT: "8000"
@@ -289,6 +300,7 @@ services:
     image: prom/node-exporter:${NODE_EXPORTER_VERSION:-v1.13.1}
     container_name: node-exporter
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     command:
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
@@ -320,7 +332,9 @@ services:
   blackbox-exporter:
     image: prom/blackbox-exporter:${BLACKBOX_EXPORTER_VERSION:-v0.29.1}
     container_name: blackbox-exporter
+    user: nobody   # image default is root; HTTP probes need no privileges
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     command:
       - --config.file=/etc/blackbox/blackbox.yml
     volumes:
@@ -347,6 +361,7 @@ services:
     image: prometheuscommunity/postgres-exporter:${POSTGRES_EXPORTER_VERSION:-v0.21.1}
     container_name: postgres-exporter
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     environment:
       # Least-privilege role (pg_monitor, read-only): scripts/postgres-monitoring-user.sql
       DATA_SOURCE_URI: glitchtip-postgres:5432/glitchtip?sslmode=disable

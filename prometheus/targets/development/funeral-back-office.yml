@@ -1,0 +1,7 @@
+# Django on the Windows host. Inside a container 'localhost' is the container;
+# host.docker.internal is the Windows host (Docker Desktop).
+- targets: ["host.docker.internal:8000"]
+  labels:
+    application: funeral-back-office
+    environment: development
+    kind: application

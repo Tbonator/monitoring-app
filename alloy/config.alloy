@@ -86,6 +86,11 @@ loki.process "app_json" {
 loki.write "local" {
   endpoint {
     url = "http://loki:3100/loki/api/v1/push"
+    // Outage tolerance: defaults (10 retries, backoff up to 5m) give up after
+    // ~8.5 min and DROP logs. 60 retries capped at 30s => ~30 min of Loki downtime.
+    min_backoff_period  = "500ms"
+    max_backoff_period  = "30s"
+    max_backoff_retries = 60
   }
   external_labels = {
     collector = "alloy",

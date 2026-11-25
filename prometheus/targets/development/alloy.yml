@@ -1,0 +1,4 @@
+- targets: ["alloy:12345"]
+  labels:
+    application: monitoring-platform
+    environment: development

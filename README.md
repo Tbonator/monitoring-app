@@ -2,7 +2,7 @@
 
 A standalone, open-source technical monitoring platform. The first application it will monitor is the **Funeral Back Office System** (a Django application).
 
-**Current phase:** Phase 4 (advanced monitoring) is implemented. The Windows Exporter install and the WSL memory cap are still pending; see [TASKS.md](TASKS.md).
+**Current phase:** Phase 5 (production readiness) is complete and tested locally. Production deployment is waiting for a server, domains and SMTP details; see [docs/deployment.md](docs/deployment.md) and [docs/security-review.md](docs/security-review.md).
 
 | Service | URL (local only) | Purpose |
 |---|---|---|

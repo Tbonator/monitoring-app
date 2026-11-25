@@ -1,0 +1,66 @@
+# Runs ON THE FUNERAL BACK OFFICE (APP) SERVER in production (Phase 5).
+#   * alloy          tails the app's JSON log files, redacts again, pushes to
+#                    Loki on the monitoring server over the PRIVATE network
+#   * node-exporter  host metrics for the app server (scraped by Prometheus)
+#
+#   cd deploy/app-server && cp app-server.env.example app-server.env   # edit values
+#   docker compose --env-file app-server.env up -d
+#
+# Both listen ONLY on the private interface (APP_PRIVATE_IP). Firewall: allow
+# 9100/12345 from the monitoring server's private IP only.
+name: monitoring-agents
+
+services:
+  alloy:
+    image: grafana/alloy:${ALLOY_VERSION:-v1.22.0}
+    container_name: monitoring-alloy
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --disable-reporting
+    environment:
+      LOKI_PUSH_URL: ${LOKI_PUSH_URL:?LOKI_PUSH_URL must be set}
+      APP_ENVIRONMENT: ${APP_ENVIRONMENT:-production}
+    ports:
+      - "${APP_PRIVATE_IP:?APP_PRIVATE_IP must be set}:12345:12345"
+    volumes:
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - ${APP_LOG_DIR:?APP_LOG_DIR must be set}:/var/log/apps/funeral-back-office:ro
+      - alloy-data:/var/lib/alloy/data
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 256M}
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  node-exporter:
+    image: prom/node-exporter:${NODE_EXPORTER_VERSION:-v1.13.1}
+    container_name: monitoring-node-exporter
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+)($|/)
+    ports:
+      - "${APP_PRIVATE_IP}:9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro,rslave
+    deploy:
+      resources:
+        limits: {cpus: "0.25", memory: 64M}
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+volumes:
+  alloy-data:
+    name: monitoring-agents-alloy-data

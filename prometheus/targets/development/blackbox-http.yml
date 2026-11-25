@@ -1,0 +1,13 @@
+# HTTP probes. module: http_2xx | http_ready | http_2xx_follow (see exporters/blackbox/blackbox.yml)
+- targets: ["http://host.docker.internal:8000/health/live/"]
+  labels: {application: funeral-back-office, environment: development, module: http_2xx, endpoint: live}
+- targets: ["http://host.docker.internal:8000/health/ready/"]
+  labels: {application: funeral-back-office, environment: development, module: http_ready, endpoint: ready}
+- targets: ["http://uptime-kuma:3001/"]
+  labels: {application: monitoring-platform, environment: development, module: http_2xx_follow, endpoint: health}
+- targets:
+    - http://grafana:3000/api/health
+    - http://alertmanager:9093/-/healthy
+    - http://loki:3100/ready
+    - http://glitchtip:8000/_health/
+  labels: {application: monitoring-platform, environment: development, module: http_2xx, endpoint: health}

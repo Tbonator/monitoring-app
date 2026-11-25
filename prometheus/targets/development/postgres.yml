@@ -1,0 +1,6 @@
+# GlitchTip's PostgreSQL.
+- targets: ["postgres-exporter:9187"]
+  labels:
+    application: monitoring-platform
+    environment: development
+    database: glitchtip

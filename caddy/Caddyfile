@@ -1,0 +1,75 @@
+# Caddy reverse proxy - PRODUCTION HTTPS entry point (Phase 5).
+#
+# Only Grafana and GlitchTip are published (owner decision, ADR-028).
+# Prometheus, Alertmanager, Loki and Uptime Kuma stay internal: use an SSH
+# tunnel (see docs/deployment.md).
+#
+# Environment (from .env.prod):
+#   GRAFANA_DOMAIN, GLITCHTIP_DOMAIN  public hostnames
+#   CADDY_TLS                         ACME e-mail for Let's Encrypt (production)
+#                                     or "internal" (local test, self-signed CA)
+
+{
+	# No admin API on the network; no telemetry.
+	admin off
+	servers {
+		protocols h1 h2
+	}
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+}
+
+(access_log) {
+	# Access logs omit query strings and request bodies are never logged.
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				# Drop the whole query string (search terms can be names/ID
+				# numbers). NB: the "query" filter has no wildcard - "replace *"
+				# only matches a parameter literally named "*" (found in testing).
+				request>uri regexp \?.*$ ?[QUERY_REMOVED]
+				request>headers>Authorization delete
+				request>headers>Cookie delete
+				resp_headers>Set-Cookie delete
+			}
+		}
+	}
+}
+
+# Container healthcheck only (port 8080 is NOT published). A bare-port site has
+# no hostname, so Caddy serves it over plain HTTP without redirecting.
+:8080 {
+	respond /healthz "ok" 200
+	respond 404
+}
+
+{$GRAFANA_DOMAIN} {
+	tls {$CADDY_TLS}
+	import security_headers
+	import access_log
+	encode zstd gzip
+	reverse_proxy grafana:3000
+}
+
+{$GLITCHTIP_DOMAIN} {
+	tls {$CADDY_TLS}
+	import security_headers
+	import access_log
+	encode zstd gzip
+	# Error events from applications (Sentry protocol) can be large.
+	request_body {
+		max_size 20MB
+	}
+	reverse_proxy glitchtip:8000
+}

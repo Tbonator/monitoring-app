@@ -1,0 +1,15 @@
+# PRODUCTION targets. Replace the placeholders:
+#   APP_SERVER_PRIVATE_IP   private/VPN address of the Funeral Back Office server
+#   *.example.co.za         public hostnames
+- targets: ["node-exporter:9100"]
+  labels:
+    application: monitoring-platform
+    environment: production
+    host: monitoring-server
+    role: monitoring-host
+- targets: ["APP_SERVER_PRIVATE_IP:9100"]
+  labels:
+    application: funeral-back-office
+    environment: production
+    host: app-server
+    role: app-host

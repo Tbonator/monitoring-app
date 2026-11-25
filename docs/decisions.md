@@ -120,3 +120,26 @@
 - **Context:** Installing with `REMOVE=FirewallException` reported success (MsiInstaller event 1033), but the install log showed `REMOVE = ALL` and every feature, `DefaultFeature` included, was skipped. The result was a registered product with **no files and no service**. The README doesn't document this behaviour.
 - **Decision:** `scripts/install-windows-exporter.ps1` passes `ADDLOCAL=DefaultFeature`, so the FirewallException feature is never selected. It also cleans up an empty earlier registration in the same UAC prompt, and fails loudly if no service exists afterwards.
 - **Verified:** the service runs automatically, listens on 127.0.0.1:9182 only, and 0 firewall rules exist.
+
+## ADR-028: Production topology and Caddy for HTTPS
+- **Date:** 2026-11-26. **Approved by:** project owner (Caddy, exposure, private network, email).
+- **Decision:** A separate Linux monitoring server. **Caddy 2.11.9** terminates HTTPS with automatic Let's Encrypt certificates, for **Grafana and GlitchTip only**. Prometheus, Alertmanager, Loki and Uptime Kuma stay on 127.0.0.1 and are reached through an SSH tunnel. The app server talks to the monitoring server over a **private network or VPN**: Prometheus scrapes it, and Alloy on the app server pushes logs to Loki on the private IP. Errors go to GlitchTip's public HTTPS address.
+- **Rejected:** nginx with certbot (more moving parts) and Traefik (usually needs Docker socket access).
+
+## ADR-029: Environment-specific scrape targets
+- **Decision:** `prometheus.yml` holds only job definitions. Targets and labels live in `prometheus/targets/{development,production}/<job>.yml`, selected by `PROMETHEUS_TARGETS_DIR`. `environment` was removed from Prometheus' external labels.
+- **Verified:** all 16 development targets had identical labels and scrape URLs before and after the refactor. `validate.ps1` checks every job's target files in both environments.
+
+## ADR-030: Production overlay and template location
+- **Decision:** `docker-compose.prod.yml` is layered on the base file, with `deploy/production.env.example` copied to `.env.prod` on the server. The template lives under `deploy/` because Ruflo's permission rule denies reading and writing `.env.*` paths for Claude Code (ADR-026).
+- **Local test:** `deploy/local-prod-test.env` (git-ignored) uses `CADDY_TLS=internal` and binds to 127.0.0.1. It is exercised by `tests/test_https_prod_overlay.ps1`.
+
+## ADR-031: Restore is tested, not assumed
+- **Decision:** `restore.ps1 -Mode Drill` restores into temporary `restoredrill-*` volumes and checks the contents. It starts Prometheus from the restored WAL and queries it, starts PostgreSQL and counts rows, and runs SQLite integrity checks. Afterwards it removes only its own drill volumes. Live restore needs `-Force` (`restore.sh` asks you to type `RESTORE`).
+
+## ADR-032: Log shipping must survive Loki outages
+- **Context:** Alloy's defaults drop logs after about 8.5 minutes of failed pushes.
+- **Decision:** `max_backoff_period=30s` and `max_backoff_retries=60`, giving about 30 minutes of tolerance, in both Alloy configs. Verified by the failure simulation (0 dropped).
+
+## ADR-033: Container hardening
+- **Decision:** `no-new-privileges:true` on every service, and Blackbox Exporter runs as `nobody`. All 11 development containers were recreated and are healthy.

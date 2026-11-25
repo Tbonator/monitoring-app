@@ -1,0 +1,4 @@
+- targets: ["loki:3100"]
+  labels:
+    application: monitoring-platform
+    environment: development

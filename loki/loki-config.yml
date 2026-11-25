@@ -31,9 +31,9 @@ schema_config:
         period: 24h
 
 limits_config:
-  retention_period: 168h            # 7 days
+  retention_period: ${LOKI_RETENTION_PERIOD:-168h}   # dev 7d; prod via .env.prod
   reject_old_samples: true
-  reject_old_samples_max_age: 168h
+  reject_old_samples_max_age: 168h  # accept up to 7 days of backlog
   ingestion_rate_mb: 4
   ingestion_burst_size_mb: 8
   max_label_names_per_series: 15

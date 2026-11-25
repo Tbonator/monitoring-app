@@ -142,9 +142,40 @@ Status key: ✅ done and verified · 🟡 partially done · ⬜ not started
 - Old backups are never deleted automatically.
 - Docker Desktop's VM disk is a 1 TB virtual disk that grows on demand, while the physical C: drive is 498 GB. The Windows C: disk alert is the real guard against running out of space.
 
-## Phase 5
+## Phase 5: Production readiness
 
-See CLAUDE.md §16.
+| Task | Status | Notes |
+|---|---|---|
+| Design independent production infrastructure | ✅ | `docs/deployment.md`: a separate monitoring server, a private network to the app server, sizing and firewall (ADR-028) |
+| Configure HTTPS | ✅ (tested locally) | Caddy 2.11.9 for Grafana and GlitchTip. Tested with Caddy's internal CA; Let's Encrypt needs a real domain. |
+| Authentication and access controls | ✅ | Only Grafana and GlitchTip are public, both behind logins. Secure cookies, HSTS and sign-up disabled. Everything else is behind an SSH tunnel. |
+| Backup and restore procedures | ✅ | `backup.sh` (Linux, retention), `restore.ps1` drill and live, and `restore.sh`. **The restore drill passed.** |
+| Production retention | ✅ (configurable) | Metrics 30 d / 20 GB, logs 14 d, errors 30 d, backups 14 d. **The POPIA review of these periods is open.** |
+| Deployment documentation | ✅ | Install, verify, update, rollback, restore and operating notes |
+| Failure simulation | ✅ | Local only: exporter, database and Loki outages, alerts, recovery and no log loss |
+| Security review | ✅ | `docs/security-review.md`: 2 high and 2 medium findings fixed, 1 low fixed, 3 medium and 5 low open |
+| Actual production deployment | ⬜ | No server, domain or SMTP details yet. Placeholders must be filled in. |
+
+### Phase 5 test results (2026-11-26)
+
+| Test | Result | Evidence |
+|---|---|---|
+| Production configs validate | PASS | Prod overlay, Caddyfile, `alertmanager.prod.yml`, app-server bundle, and target files for both environments (11 jobs each) |
+| Scrape-target refactor changes nothing in dev | PASS | 16 of 16 targets identical before and after |
+| HTTPS overlay, local | PASS (16/16) | 308 redirect, certificate verifies, 4 security headers, `Server` header removed, API 401, GlitchTip over HTTPS, Prometheus not served, access log free of query strings, cookies and tokens, secure cookies, Caddy healthy |
+| **Bug found:** access log leaked query strings | FIXED | Fake name and ID number were visible before the fix, absent after |
+| Restore drill (backup of 2026-11-25 23:28) | PASS | 8 of 8 volumes restored. Prometheus replayed its WAL with 481 app series. PostgreSQL started with 3 events, 1 user and 1 project. Grafana and Kuma SQLite integrity OK, with 2 monitors and 268 heartbeats. Drill volumes removed. |
+| Failure simulation | PASS | PostgresDown, InfrastructureExporterDown (node) and MonitoringComponentDown (loki) fired and reached Alertmanager, then resolved about 50 s after restart. All targets came back up. |
+| **Bug found:** Alloy drops logs after about 8.5 min of Loki outage | FIXED | After the fix, a line logged during the outage arrived in Loki with 0 drops |
+| **Finding:** GlitchTip `/_health/` is liveness-only | ACCEPTED | It stays 200 during a database outage; PostgresDown covers it |
+| Hardening applied | PASS | 11 of 11 containers have `no-new-privileges` and are healthy. Blackbox runs as `nobody`. |
+
+### Phase 5 open items
+- Provide the production server, domains, SMTP details and recipients, then deploy following `docs/deployment.md`.
+- Security review: **O1** monitoring of the monitoring (external heartbeat), **O2** encrypted off-host backups, **O3** funeral app hygiene.
+- POPIA review of the retention periods.
+- Schedule backups (cron on the server, or a Windows scheduled task in development). Both need owner approval.
+- The WSL 4 GB cap still needs `wsl --shutdown`.
 
 ## Open issues
 

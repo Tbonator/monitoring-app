@@ -1,0 +1,100 @@
+// APP-SERVER copy of alloy/config.alloy (production). Differences: Loki URL and
+// environment come from LOKI_PUSH_URL / APP_ENVIRONMENT. Keep both files in sync.
+// Grafana Alloy - log collection (Phase 3).
+//
+// Tails the Funeral Back Office JSON log file (bind-mounted read-only from the
+// Windows host) and ships it to Loki. A second redaction pass is applied here
+// as defence in depth; the application already redacts before writing.
+
+logging {
+  level  = "warn"
+  format = "logfmt"
+}
+
+// ---- Funeral Back Office ----------------------------------------------------
+local.file_match "funeral_back_office" {
+  path_targets = [{
+    // One file per day, append-only (no renames: rename-based rotation is not
+    // tracked reliably across the Docker Desktop bind mount - see ADR-019).
+    "__path__"    = "/var/log/apps/funeral-back-office/funeral-back-office-*.log",
+    "application" = "funeral-back-office",
+    "environment" = sys.env("APP_ENVIRONMENT"),
+    "source"      = "app-file",
+  }]
+  sync_period = "10s"
+}
+
+loki.source.file "funeral_back_office" {
+  targets       = local.file_match.funeral_back_office.targets
+  forward_to    = [loki.process.app_json.receiver]
+  tail_from_end = false
+
+  // Bind mounts from Windows do not deliver inotify events reliably: poll.
+  file_watch {
+    min_poll_frequency = "1s"
+    max_poll_frequency = "5s"
+  }
+}
+
+// ---- Parsing + redaction ----------------------------------------------------
+loki.process "app_json" {
+  forward_to = [loki.write.local.receiver]
+
+  stage.json {
+    expressions = {
+      ts             = "ts",
+      level          = "level",
+      logger         = "logger",
+      exception_type = "exception_type",
+    }
+  }
+
+  stage.timestamp {
+    source = "ts"
+    format = "RFC3339Nano"
+  }
+
+  // Low-cardinality labels only. logger/exception_type go to structured
+  // metadata (queryable, but not indexed as stream labels).
+  stage.labels {
+    values = { level = "" }
+  }
+  stage.structured_metadata {
+    values = { logger = "", exception_type = "" }
+  }
+
+  // Defence-in-depth redaction (mirrors the application's redact()).
+  // NOTE: stage.replace replaces only the CAPTURE GROUP(S), so each
+  // expression captures exactly the sensitive value.
+  stage.replace {
+    expression = "(?i)(?:bearer|basic)\\s+([A-Za-z0-9._~+/=-]{8,})"
+    replace    = "[REDACTED]"
+  }
+  stage.replace {
+    expression = "([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,})"
+    replace    = "[REDACTED_EMAIL]"
+  }
+  stage.replace {
+    expression = "(?:^|[^0-9])([0-9]{13})(?:[^0-9]|$)"
+    replace    = "[REDACTED_ID]"
+  }
+  stage.replace {
+    expression = "(?i)(?:password|passwd|pwd|secret|token|api[_-]?key|sessionid|csrftoken|cookie)[\"']?\\s*[:=]\\s*[\"']?([^\\s\"'&,;]+)"
+    replace    = "[REDACTED]"
+  }
+}
+
+// ---- Output -----------------------------------------------------------------
+loki.write "local" {
+  endpoint {
+    url = sys.env("LOKI_PUSH_URL")
+    // Outage tolerance: defaults (10 retries, backoff up to 5m) give up after
+    // ~8.5 min and DROP logs. 60 retries capped at 30s => ~30 min of Loki downtime.
+    min_backoff_period  = "500ms"
+    max_backoff_period  = "30s"
+    max_backoff_retries = 60
+  }
+  external_labels = {
+    collector = "alloy",
+  }
+}

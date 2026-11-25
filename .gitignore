@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+# Local production-overlay test values (non-secret, but machine-specific)
+deploy/local-prod-test.env
 *.key
 *.pem
 *.crt
