@@ -21,13 +21,33 @@
 
 Pre-change copies of these files are in `monitoring-app/backups/funeral-app-pre-phase2-*` (git-ignored).
 
+### Phase 3 changes to the application (additions only)
+
+| File | Change |
+|---|---|
+| `funeralmanagementsystem/observability.py` | **New.** Contains `redact()`, `RedactingFilter`, `JsonFormatter`, `DailyFileHandler` and `init_error_tracking()` |
+| `funeralmanagementsystem/settings.py` | Appended a `LOGGING` block built by `build_logging_config()`, plus `init_error_tracking()` |
+| `requirements.txt` and `Pipfile` | Added `sentry-sdk==3.0.1`. Pinned `django==6.1.3` in the Pipfile (ADR-020). |
+| `.gitignore` | Added `logs/` |
+
+Pre-change copies are in `monitoring-app/backups/funeral-app-pre-phase3-*`.
+
+| Environment variable | Purpose | Default |
+|---|---|---|
+| `MONITORING_METRICS_TOKEN` | Enables `/metrics` | unset, so `/metrics` returns 404 |
+| `GLITCHTIP_DSN` | Enables error tracking | unset, so error tracking is off |
+| `MONITORING_ENVIRONMENT` | `environment` label on logs and errors | `development` |
+| `APP_LOG_DIR` | JSON log directory | `<BASE_DIR>\logs` |
+| `APP_LOG_RETENTION_DAYS` | How long daily log files are kept | `7` |
+
 ### Running the app with monitoring
 
 ```powershell
-$env:MONITORING_METRICS_TOKEN = Get-Content "<monitoring-app>\secrets\funeral-back-office-metrics.token" -Raw
-cd "$env:USERPROFILE\Desktop\funeral app"
-pipenv run python funeralmanagementsystem\manage.py runserver 127.0.0.1:8000
+.\scripts\run-funeral-app.ps1             # normal
+.\scripts\run-funeral-app.ps1 -TestMode   # adds the failure-simulation routes (development only)
 ```
+
+The script reads the token and DSN from `secrets/` and starts `runserver 127.0.0.1:8000 --noreload` with the app's pipenv Python. `--noreload` keeps a single process writing the log file.
 
 Always bind to **`127.0.0.1:8000`**. Phase 2 confirmed that containers can still reach a loopback-bound app through `host.docker.internal`, so no `0.0.0.0` binding or Windows Firewall rule is needed. If the token variable is not set, `/metrics` returns 404 and Prometheus shows the target as down.
 

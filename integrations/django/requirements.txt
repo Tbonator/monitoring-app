@@ -1,1 +1,2 @@
 ﻿django-prometheus==2.6.0.dev26  # pre-release: first version declaring Django 6.1 support; move to 2.6.0 stable when released
+sentry-sdk==3.0.1  # GlitchTip client; 3.x uses data_collection (see observability.py)

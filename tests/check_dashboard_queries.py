@@ -10,11 +10,22 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import time
+
 PROM = "http://127.0.0.1:9090/api/v1/query"
+LOKI = "http://127.0.0.1:3100/loki/api/v1/query_range"
 app = sys.argv[1] if len(sys.argv) > 1 else "funeral-back-office"
 env = sys.argv[2] if len(sys.argv) > 2 else "development"
 subs = {"$application": app, "$environment": env,
-        "$__rate_interval": "1m", "$__range": "1h"}
+        "$__rate_interval": "1m", "$__range": "1h", "$__auto": "1m"}
+
+
+def build_url(target, expr):
+    if (target.get("datasource") or {}).get("type") == "loki":
+        now = time.time()
+        return LOKI + "?" + urllib.parse.urlencode(
+            {"query": expr, "start": int((now - 3600) * 1e9), "end": int(now * 1e9), "limit": 50})
+    return PROM + "?" + urllib.parse.urlencode({"query": expr})
 
 
 def walk(panels):
@@ -31,7 +42,7 @@ for f in sorted(Path(__file__).parent.parent.glob("grafana/dashboards/*.json")):
             expr = t["expr"]
             for k, v in subs.items():
                 expr = expr.replace(k, v)
-            url = PROM + "?" + urllib.parse.urlencode({"query": expr})
+            url = build_url(t, expr)
             try:
                 with urllib.request.urlopen(url, timeout=10) as r:
                     res = json.load(r)["data"]["result"]

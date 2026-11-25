@@ -146,6 +146,140 @@ services:
           memory: 512M
     logging: *default-logging
 
+  # ---------------------------------------------------------------------------
+  # Phase 3: centralised logging
+  # ---------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:${LOKI_VERSION:-3.7.10}
+    container_name: loki
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    ports:
+      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    networks:
+      - monitoring-network
+    # No Docker healthcheck: the Loki 3.x image is distroless (no shell, wget
+    # or curl). Health is monitored by Prometheus (up{job="loki"}) and
+    # scripts/status.ps1 (GET /ready).
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 384M
+    logging: *default-logging
+
+  alloy:
+    image: grafana/alloy:${ALLOY_VERSION:-v1.22.0}
+    container_name: alloy
+    restart: unless-stopped
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --disable-reporting
+    environment:
+      FUNERAL_APP_ENVIRONMENT: ${FUNERAL_APP_ENVIRONMENT:-development}
+    # No published port: the Alloy UI/metrics are reachable on the
+    # monitoring network only (Prometheus scrapes alloy:12345).
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      # Funeral Back Office log directory on the Windows host (read-only).
+      - ${FUNERAL_APP_LOG_DIR:?FUNERAL_APP_LOG_DIR must be set in .env}:/var/log/apps/funeral-back-office:ro
+      - alloy-data:/var/lib/alloy/data
+    networks:
+      - monitoring-network
+    depends_on:
+      loki:
+        condition: service_started   # Alloy retries pushes until Loki is ready
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # Phase 3: error tracking (GlitchTip, all-in-one: web + worker)
+  # ---------------------------------------------------------------------------
+  glitchtip-postgres:
+    image: postgres:${GLITCHTIP_POSTGRES_VERSION:-18.7}
+    container_name: glitchtip-postgres
+    restart: unless-stopped
+    command: ["postgres", "-c", "max_locks_per_transaction=512"]
+    environment:
+      POSTGRES_USER: glitchtip
+      POSTGRES_DB: glitchtip
+      POSTGRES_PASSWORD: ${GLITCHTIP_DB_PASSWORD:?GLITCHTIP_DB_PASSWORD must be set in .env}
+    # Not published: reachable only by GlitchTip on the monitoring network.
+    volumes:
+      - glitchtip-postgres-data:/var/lib/postgresql
+    networks:
+      - monitoring-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glitchtip -d glitchtip"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    stop_grace_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+    logging: *default-logging
+
+  glitchtip:
+    image: glitchtip/glitchtip:${GLITCHTIP_VERSION:-6.2.6}
+    container_name: glitchtip
+    restart: unless-stopped
+    environment:
+      SERVER_ROLE: all_in_one
+      PORT: "8000"
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:?GLITCHTIP_SECRET_KEY must be set in .env}
+      DATABASE_URL: postgres://glitchtip:${GLITCHTIP_DB_PASSWORD}@glitchtip-postgres:5432/glitchtip
+      VALKEY_URL: ""                        # Postgres-backed queue/cache (saves RAM)
+      GLITCHTIP_DOMAIN: http://localhost:${GLITCHTIP_PORT:-8001}
+      DEFAULT_FROM_EMAIL: glitchtip@localhost
+      EMAIL_URL: consolemail://             # no real email is sent
+      ENABLE_USER_REGISTRATION: "false"
+      ENABLE_ORGANIZATION_CREATION: "false"
+      GLITCHTIP_RETENTION_DAYS: ${GLITCHTIP_RETENTION_DAYS:-30}
+      GRANIAN_WORKERS: "1"
+      VTASKS_CONCURRENCY: "4"
+      DATABASE_POOL_MAX_SIZE: "5"
+      LOG_LEVEL: WARNING
+      ALLOWED_HOSTS: localhost,127.0.0.1
+    ports:
+      - "127.0.0.1:${GLITCHTIP_PORT:-8001}:8000"
+    volumes:
+      - glitchtip-uploads:/code/uploads
+    networks:
+      - monitoring-network
+    depends_on:
+      glitchtip-postgres:
+        condition: service_healthy
+    healthcheck:
+      # Image has python but no curl/wget. Host header must be in ALLOWED_HOSTS.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/_health/', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging: *default-logging
+
 networks:
   monitoring-network:
     name: monitoring-network
@@ -160,3 +294,11 @@ volumes:
     name: monitoring-uptime-kuma-data
   alertmanager-data:
     name: monitoring-alertmanager-data
+  loki-data:
+    name: monitoring-loki-data
+  alloy-data:
+    name: monitoring-alloy-data
+  glitchtip-postgres-data:
+    name: monitoring-glitchtip-postgres-data
+  glitchtip-uploads:
+    name: monitoring-glitchtip-uploads

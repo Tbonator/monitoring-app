@@ -36,6 +36,20 @@ docker run --rm --entrypoint amtool `
     "prom/alertmanager:$amVersion" check-config /etc/alertmanager/alertmanager.yml
 Write-Result ($LASTEXITCODE -eq 0) 'amtool check-config'
 
+# 2c. Loki config (loki -verify-config from the pinned image)
+$lokiVersion = (Select-String -Path .env -Pattern '^LOKI_VERSION=(.+)$').Matches.Groups[1].Value
+if (-not $lokiVersion) { $lokiVersion = '3.7.10' }
+docker run --rm -v "$here\loki\loki-config.yml:/etc/loki/loki-config.yml:ro" `
+    "grafana/loki:$lokiVersion" '-config.file=/etc/loki/loki-config.yml' '-verify-config' 2>&1 | Out-Null
+Write-Result ($LASTEXITCODE -eq 0) 'loki -verify-config'
+
+# 2d. Alloy config syntax (alloy fmt parses the file)
+$alloyVersion = (Select-String -Path .env -Pattern '^ALLOY_VERSION=(.+)$').Matches.Groups[1].Value
+if (-not $alloyVersion) { $alloyVersion = 'v1.22.0' }
+docker run --rm -v "$here\alloy\config.alloy:/etc/alloy/config.alloy:ro" `
+    "grafana/alloy:$alloyVersion" fmt /etc/alloy/config.alloy | Out-Null
+Write-Result ($LASTEXITCODE -eq 0) 'alloy fmt (config syntax)'
+
 # 3. Grafana dashboard JSON syntax
 foreach ($f in Get-ChildItem grafana\dashboards -Filter *.json) {
     try { Get-Content $f.FullName -Raw | ConvertFrom-Json | Out-Null; Write-Result $true "dashboard JSON $($f.Name)" }

@@ -31,6 +31,20 @@ scrape_configs:
           application: monitoring-platform
           environment: development
 
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+        labels:
+          application: monitoring-platform
+          environment: development
+
+  - job_name: alloy
+    static_configs:
+      - targets: ["alloy:12345"]
+        labels:
+          application: monitoring-platform
+          environment: development
+
   # Funeral Back Office System (Django running directly on the Windows host).
   # Inside a container, "localhost" is the container itself, NOT Windows;
   # host.docker.internal resolves to the Windows host (Docker Desktop).

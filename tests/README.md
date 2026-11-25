@@ -7,7 +7,11 @@ These tests are for development only. Never run them against production.
 | Configuration validation | `.\scripts\validate.ps1` |
 | Service health | `.\scripts\status.ps1` |
 | Dashboard queries return data | `python -I tests\check_dashboard_queries.py` |
+| Django settings snippet only appends, wraps all middleware, accepts tuples, safe to re-apply | `python -I tests\test_example_settings.py` |
 | Uptime Kuma monitor and heartbeat state (read-only) | `Get-Content tests\kuma_status.js -Raw \| docker exec -i uptime-kuma node -` |
+| Redaction rules (fake data) | `& $py tests\test_redaction.py`, with `$env:FUNERAL_APP_DIR` set |
+| Daily log files: switch, prune, ingest | `& $py tests\test_log_rotation.py`, with `$env:FUNERAL_APP_DIR` set |
+| End-to-end privacy (GlitchTip and Loki) | Start the app with `.\scripts\run-funeral-app.ps1 -TestMode`, then run `python -I tests\test_privacy_end_to_end.py` |
 | Readiness reports a database failure (503, no leaks) | see below |
 | HTTP 500 and slow-request metrics and alerts | see below |
 

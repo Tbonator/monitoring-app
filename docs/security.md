@@ -26,6 +26,20 @@ The monitored Funeral Back Office System processes sensitive personal informatio
 | No external notifications | Alertmanager's only receiver is `null`. |
 | Real data untouched by tests | The database-failure test uses an out-of-tree settings override and never touches `db.sqlite3`. |
 
+## Controls added in Phase 3
+
+| Control | Implementation |
+|---|---|
+| Logs redacted at source | `RedactingFilter` masks SA ID numbers, phone numbers, emails, 13-19 digit numbers, credentials, bearer and basic tokens, and cookies. It strips query strings and replaces numeric path segments with `:id`. The `HttpRequest` object is never serialized. |
+| Second redaction layer | Alloy `stage.replace` covers ID numbers, emails, tokens and credentials |
+| Error events minimised | sentry-sdk 3.0 `data_collection` is entirely off: no user info, cookies, headers, bodies, query params, frame variables or DB query data. `before_send` and `before_breadcrumb` remove the remaining request data and redact all strings. `server_name` is the app name, not the hostname. |
+| GlitchTip hardened | Sign-up and organization creation are disabled. The database has a password and is not published. `ALLOWED_HOSTS` is restricted, IP scrubbing is enabled on the project, and email goes to the console only. |
+| Verified end to end | `tests/test_privacy_end_to_end.py` injects 9 fake sensitive values and checks that none reach GlitchTip or Loki |
+| Retention | Loki keeps 7 days. GlitchTip keeps 30 days. App log files are kept 7 days (`APP_LOG_RETENTION_DAYS`). |
+| Secrets | The GlitchTip secret key, DB password and admin password are in `.env`. The DSN is in `secrets/`. All are git-ignored. |
+
+**Limitation:** redaction is pattern-based and best effort. Free-text fields such as names are only removed where they appear in query strings. Code must not log personal data.
+
 ## Funeral Back Office findings (outside monitoring scope; not changed)
 
 - The active `settings.py` hardcodes `SECRET_KEY` and has `DEBUG=True`. The Git-tracked snapshot reads the key from `DJANGO_SECRET_KEY`. Treat the hardcoded key as compromised before any hosted use.

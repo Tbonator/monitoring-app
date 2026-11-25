@@ -18,7 +18,7 @@ if ($LASTEXITCODE -ne 0) { Write-Error 'Docker engine is not running. Start Dock
 $running = docker compose ps --services --status running 2>$null
 if (-not $running) {
     $busy = @()
-    foreach ($p in 3000, 3001, 9090, 9093) {
+    foreach ($p in 3000, 3001, 9090, 9093, 3100, 8001) {
         if (Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue) { $busy += $p }
     }
     if ($busy.Count -gt 0) { Write-Error "Port(s) already in use: $($busy -join ', ')" }
@@ -36,4 +36,6 @@ Write-Host '  Grafana:     http://localhost:3000'
 Write-Host '  Uptime Kuma: http://localhost:3001'
 Write-Host '  Prometheus:  http://localhost:9090'
 Write-Host '  Alertmanager: http://localhost:9093'
+Write-Host '  GlitchTip:   http://localhost:8001'
+Write-Host '  Loki (API):  http://localhost:3100'
 Write-Host 'Run scripts\status.ps1 to check health.'

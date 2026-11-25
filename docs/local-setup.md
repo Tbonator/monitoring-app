@@ -26,6 +26,7 @@ Copy-Item .env.example .env
 |---|---|
 | Grafana, http://localhost:3000 | Log in with `GRAFANA_ADMIN_USER` and `GRAFANA_ADMIN_PASSWORD` from `.env`. The Prometheus data source and the *Application Monitoring → Monitoring Platform Health* dashboard are already provisioned. |
 | Uptime Kuma, http://localhost:3001 | The first visit opens the setup wizard. Choose **Embedded SQLite** as the database (lowest resource use), then create an admin account with a strong password. Uptime Kuma has no environment variable for preseeding this account. |
+| GlitchTip, http://localhost:8001 | Log in with `GLITCHTIP_ADMIN_EMAIL` and `GLITCHTIP_ADMIN_PASSWORD` from `.env`, then change the password. On a fresh install, run `scripts/glitchtip-bootstrap.py` first; the docstring explains how, and the DSN is written to `secrets/`. |
 | Prometheus, http://localhost:9090 | No login. It is reachable from localhost only. Check **Status → Targets**. |
 
 ## Day-to-day commands

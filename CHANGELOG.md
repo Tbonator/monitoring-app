@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.0] - 2026-11-25 - Phase 3: Error tracking and logging
+
+### Added
+- GlitchTip 6.2.6 (127.0.0.1:8001, all-in-one) with a dedicated PostgreSQL 18.7. No Valkey, sign-up disabled, console-only email and 30-day retention.
+- Grafana Loki 3.7.10 (127.0.0.1:3100) with 7-day retention, provisioned as a Grafana data source.
+- Grafana Alloy v1.22.0. It tails the app's daily JSON log files through a read-only mount and applies a second redaction pass.
+- Funeral Back Office `observability.py`:
+  - redaction (`redact()` and `RedactingFilter`),
+  - `JsonFormatter`,
+  - `DailyFileHandler`,
+  - sentry-sdk 3.0.1 error tracking with every `data_collection` category disabled.
+- Application Overview dashboard: Logs section (log volume, errors and warnings, log stream) and a GlitchTip link. The generator is now in the repo at `grafana/generate_application_overview.py`.
+- Prometheus now scrapes Loki and Alloy.
+- Scripts: `run-funeral-app.ps1` (runs Django with monitoring env, `-TestMode`) and `glitchtip-bootstrap.py`.
+- Tests: `test_redaction.py`, `test_privacy_end_to_end.py`, `test_log_rotation.py`. `check_dashboard_queries.py` now also runs Loki queries.
+
+### Changed
+- `validate.ps1` also runs `loki -verify-config` and `alloy fmt`.
+- Funeral app Pipfile pins `django = "==6.1.3"` (ADR-020).
+
+### Fixed (found by tests during the phase)
+- The redaction rule order leaked bearer tokens ("Authorization: Bearer <tok>"). Fixed, and covered by `test_redaction.py`.
+- Alloy's email `stage.replace` captured only the domain. Fixed to capture the whole address.
+- Rename-based log rotation broke shipping through the Docker Desktop bind mount. Replaced with daily files (ADR-019).
+- `integrations/django/example_settings.py` crashed with `TypeError` on tuple `INSTALLED_APPS`/`MIDDLEWARE`, and applying it twice duplicated the app, the Prometheus middleware and the allowed hosts. It now accepts lists or tuples, is safe to re-apply, and moves misplaced Prometheus middleware to first and last. Covered by the new `tests/test_example_settings.py`.
+
 ## [0.2.0] - 2026-11-25 - Phase 2: Funeral Back Office integration
 
 ### Added

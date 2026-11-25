@@ -2,7 +2,7 @@
 
 A standalone, open-source technical monitoring platform. The first application it will monitor is the **Funeral Back Office System** (a Django application).
 
-**Current phase:** Phase 2, which integrates the Funeral Back Office System. See [TASKS.md](TASKS.md) for status.
+**Current phase:** Phase 3 (error tracking and logging) is complete. See [TASKS.md](TASKS.md) for status.
 
 | Service | URL (local only) | Purpose |
 |---|---|---|
@@ -10,8 +10,17 @@ A standalone, open-source technical monitoring platform. The first application i
 | Uptime Kuma 2.5.12 | http://localhost:3001 | Availability checks |
 | Prometheus v3.16.0 | http://localhost:9090 | Metrics collection, storage and alert rules |
 | Alertmanager v0.35.1 | http://localhost:9093 | Alert grouping, deduplication and suppression. No notifications are configured. |
+| GlitchTip 6.2.6 | http://localhost:8001 | Exception tracking (Sentry-compatible) |
+| Loki 3.7.10 | http://localhost:3100 (API only) | Log storage. Browse it in Grafana under Explore or the dashboard's Logs section. |
+| Alloy v1.22.0 | internal only | Ships the app's JSON log files to Loki |
 
-Monitored application: Funeral Back Office, Django on `127.0.0.1:8000`. To run it with monitoring enabled, see [docs/application-integration.md](docs/application-integration.md).
+Monitored application: Funeral Back Office, Django on `127.0.0.1:8000`. To run it with monitoring enabled:
+
+```powershell
+.\scripts\run-funeral-app.ps1
+```
+
+That sets the metrics token, the GlitchTip DSN and the environment label. Details are in [docs/application-integration.md](docs/application-integration.md).
 
 ## Quick start (PowerShell)
 

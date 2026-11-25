@@ -14,6 +14,8 @@ $checks = [ordered]@{
     'Alertmanager /-/healthy' = 'http://127.0.0.1:9093/-/healthy'
     'Grafana     /api/health' = 'http://127.0.0.1:3000/api/health'
     'Uptime Kuma /'           = 'http://127.0.0.1:3001/'
+    'Loki        /ready'      = 'http://127.0.0.1:3100/ready'
+    'GlitchTip   /'           = 'http://127.0.0.1:8001/'
 }
 $failed = 0
 foreach ($name in $checks.Keys) {

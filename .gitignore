@@ -26,3 +26,16 @@ venv/
 Thumbs.db
 .DS_Store
 *.log
+
+.env.local
+.env.*.local
+
+# Ruflo / Claude Code personal tooling - not part of the monitoring platform.
+# Kept local by owner decision (2026-11-25): regenerable with `ruflo init`,
+# and committing it would make every clone run Ruflo hooks and an npx MCP server.
+# .swarm/ also holds a runtime database that can contain session content.
+.claude/
+.claude-flow/
+.agents/
+.swarm/
+.mcp.json

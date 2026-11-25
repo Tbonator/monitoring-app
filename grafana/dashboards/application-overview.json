@@ -81,6 +81,12 @@
       "targetBlank": true
     },
     {
+      "title": "GlitchTip (errors)",
+      "type": "link",
+      "url": "http://localhost:8001",
+      "targetBlank": true
+    },
+    {
       "title": "Alertmanager",
       "type": "link",
       "url": "http://localhost:9093",
@@ -1001,7 +1007,7 @@
     {
       "id": 18,
       "type": "row",
-      "title": "Infrastructure",
+      "title": "Logs (Loki, redacted at source)",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -1013,13 +1019,179 @@
     },
     {
       "id": 19,
+      "type": "timeseries",
+      "title": "Log volume by level",
+      "description": "",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 37
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (level) (count_over_time({application=~\"$application\", environment=~\"$environment\"}[$__auto]))",
+          "legendFormat": "{{level}}",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Errors and warnings logged",
+      "description": "Exceptions are tracked in detail in GlitchTip (http://localhost:8001).",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 37
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (level) (count_over_time({application=~\"$application\", environment=~\"$environment\", level=~\"error|warning|critical\"}[$__auto]))",
+          "legendFormat": "{{level}}",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "logs",
+      "title": "Application logs",
+      "description": "JSON logs shipped by Grafana Alloy. Personal data is redacted by the application and again by Alloy.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{application=~\"$application\", environment=~\"$environment\"} | json | line_format \"{{.level | upper}} {{.logger}}: {{.message}}\"",
+          "legendFormat": "",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      }
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "Infrastructure",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 54
+      },
+      "panels": []
+    },
+    {
+      "id": 23,
       "type": "text",
       "title": "Infrastructure",
       "gridPos": {
         "h": 3,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 55
       },
       "options": {
         "mode": "markdown",
@@ -1027,7 +1199,7 @@
       }
     },
     {
-      "id": 20,
+      "id": 24,
       "type": "row",
       "title": "Incidents",
       "collapsed": false,
@@ -1035,12 +1207,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 40
+        "y": 58
       },
       "panels": []
     },
     {
-      "id": 21,
+      "id": 25,
       "type": "stat",
       "title": "Firing alerts",
       "description": "",
@@ -1052,7 +1224,7 @@
         "h": 8,
         "w": 4,
         "x": 0,
-        "y": 41
+        "y": 59
       },
       "targets": [
         {
@@ -1099,7 +1271,7 @@
       }
     },
     {
-      "id": 22,
+      "id": 26,
       "type": "table",
       "title": "Active alerts",
       "description": "",
@@ -1111,7 +1283,7 @@
         "h": 8,
         "w": 20,
         "x": 4,
-        "y": 41
+        "y": 59
       },
       "targets": [
         {
@@ -1164,7 +1336,7 @@
       }
     },
     {
-      "id": 23,
+      "id": 27,
       "type": "timeseries",
       "title": "Alerts by severity (incident timeline)",
       "description": "Width of each band shows incident duration.",
@@ -1176,7 +1348,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 49
+        "y": 67
       },
       "targets": [
         {
@@ -1222,7 +1394,7 @@
       }
     },
     {
-      "id": 24,
+      "id": 28,
       "type": "timeseries",
       "title": "Recent failures: scrape and readiness",
       "description": "1 = failing at that time.",
@@ -1234,7 +1406,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 49
+        "y": 67
       },
       "targets": [
         {

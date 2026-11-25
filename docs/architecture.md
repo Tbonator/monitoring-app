@@ -28,6 +28,14 @@
 | Uptime Kuma | Runs external availability checks (HTTP, TCP) and stores the up/down history | `monitoring-uptime-kuma-data` |
 | Alertmanager (Phase 2) | Receives alerts from Prometheus, then groups, deduplicates, inhibits and suppresses repeats. Has no notification receivers yet. | `monitoring-alertmanager-data` |
 
+| Loki (Phase 3) | Log storage with 7-day retention, enforced by the compactor | `monitoring-loki-data` |
+| Alloy (Phase 3) | Tails the app's `logs\*-YYYY-MM-DD.log` through a read-only bind mount, redacts a second time, and pushes to Loki | `monitoring-alloy-data` (read positions) |
+| GlitchTip and PostgreSQL (Phase 3) | Exception tracking. Web and worker run in one container; the queue and cache live in Postgres. | `monitoring-glitchtip-postgres-data`, `monitoring-glitchtip-uploads` |
+
+Phase 3 data flow:
+- **Logs:** Django on Windows passes each record through `RedactingFilter`, then `JsonFormatter`, then into a daily file. Alloy reads the file through a read-only mount, redacts again and sends to Loki. Grafana queries Loki.
+- **Errors:** Django runs sentry-sdk with `data_collection` off and a `before_send` that redacts. It sends errors to `http://localhost:8001`, the GlitchTip port published on Windows loopback.
+
 Phase 2 data flow: Prometheus scrapes `http://host.docker.internal:8000/metrics` every 15 s using a bearer token. It evaluates `prometheus/rules/*.yml` and sends firing alerts to `alertmanager:9093`. Grafana's *Application Overview* dashboard queries Prometheus, filtered by the `application` and `environment` labels.
 
 ## Two kinds of availability
