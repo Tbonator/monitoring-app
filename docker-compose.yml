@@ -27,6 +27,8 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
+      # Scrape credentials (git-ignored). See docs/application-integration.md.
+      - ./secrets:/etc/prometheus/secrets:ro
       - prometheus-data:/prometheus
     extra_hosts:
       # Lets Prometheus reach apps running directly on the Windows host (Phase 2).
@@ -45,6 +47,38 @@ services:
         limits:
           cpus: "1.0"
           memory: 512M
+    logging: *default-logging
+
+  alertmanager:
+    image: prom/alertmanager:${ALERTMANAGER_VERSION:-v0.35.1}
+    container_name: alertmanager
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.listen-address=:9093
+      - --web.external-url=http://localhost:${ALERTMANAGER_PORT:-9093}
+      # Single local instance: disable HA cluster gossip.
+      - --cluster.listen-address=
+    ports:
+      - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    networks:
+      - monitoring-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
     logging: *default-logging
 
   grafana:
@@ -124,3 +158,5 @@ volumes:
     name: monitoring-grafana-data
   uptime-kuma-data:
     name: monitoring-uptime-kuma-data
+  alertmanager-data:
+    name: monitoring-alertmanager-data

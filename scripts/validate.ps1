@@ -18,9 +18,23 @@ Write-Result ($LASTEXITCODE -eq 0) 'docker compose config'
 # 2. Prometheus config and rules (promtool from the pinned image)
 $promVersion = (Select-String -Path .env -Pattern '^PROMETHEUS_VERSION=(.+)$').Matches.Groups[1].Value
 if (-not $promVersion) { $promVersion = 'v3.16.0' }
-$mount = "$((Get-Location).Path)\prometheus:/etc/prometheus:ro"
-docker run --rm --entrypoint promtool -v $mount "prom/prometheus:$promVersion" check config /etc/prometheus/prometheus.yml
+# Mirror the docker-compose.yml mounts so referenced paths resolve identically.
+$here = (Get-Location).Path
+if (-not (Test-Path secrets)) { New-Item -ItemType Directory secrets | Out-Null }
+docker run --rm --entrypoint promtool `
+    -v "$here\prometheus\prometheus.yml:/etc/prometheus/prometheus.yml:ro" `
+    -v "$here\prometheus\rules:/etc/prometheus/rules:ro" `
+    -v "$here\secrets:/etc/prometheus/secrets:ro" `
+    "prom/prometheus:$promVersion" check config /etc/prometheus/prometheus.yml
 Write-Result ($LASTEXITCODE -eq 0) 'promtool check config (includes rule files)'
+
+# 2b. Alertmanager config (amtool from the pinned image)
+$amVersion = (Select-String -Path .env -Pattern '^ALERTMANAGER_VERSION=(.+)$').Matches.Groups[1].Value
+if (-not $amVersion) { $amVersion = 'v0.35.1' }
+docker run --rm --entrypoint amtool `
+    -v "$here\alertmanager\alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro" `
+    "prom/alertmanager:$amVersion" check-config /etc/alertmanager/alertmanager.yml
+Write-Result ($LASTEXITCODE -eq 0) 'amtool check-config'
 
 # 3. Grafana dashboard JSON syntax
 foreach ($f in Get-ChildItem grafana\dashboards -Filter *.json) {

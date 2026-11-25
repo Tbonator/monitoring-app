@@ -11,6 +11,7 @@ Write-Host ''
 $checks = [ordered]@{
     'Prometheus  /-/healthy'  = 'http://127.0.0.1:9090/-/healthy'
     'Prometheus  /-/ready'    = 'http://127.0.0.1:9090/-/ready'
+    'Alertmanager /-/healthy' = 'http://127.0.0.1:9093/-/healthy'
     'Grafana     /api/health' = 'http://127.0.0.1:3000/api/health'
     'Uptime Kuma /'           = 'http://127.0.0.1:3001/'
 }

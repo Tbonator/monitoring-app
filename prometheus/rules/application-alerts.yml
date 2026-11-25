@@ -1,4 +1,83 @@
-# Application alert rules.
-# Phase 1: placeholder only. Rules are added in Phase 2 once application
-# metrics exist and Alertmanager is introduced.
-groups: []
+# Application alert rules (Phase 2).
+#
+# Thresholds are initial defaults from CLAUDE.md section 13. They are kept in
+# the recording rules below (app:threshold:*) so they can be tuned in ONE place
+# without editing alert expressions.
+#
+# Every alert carries: application, environment (from target labels), severity.
+
+groups:
+  - name: application-thresholds
+    rules:
+      # --- Tunable thresholds -------------------------------------------------
+      - record: app:threshold:error_ratio_5xx
+        expr: vector(0.02)          # 2 % of requests
+      - record: app:threshold:min_request_rate
+        expr: vector(0.1)           # req/s (~30 req per 5 min) before error-rate alerting applies
+      - record: app:threshold:p95_latency_seconds
+        expr: vector(2)
+
+  - name: application-recording
+    rules:
+      - record: app:http_requests:rate5m
+        expr: sum by (application, environment) (rate(django_http_requests_total_by_view_transport_method_total[5m]))
+      - record: app:http_responses_5xx:rate5m
+        expr: sum by (application, environment) (rate(django_http_responses_total_by_status_view_method_total{status=~"5.."}[5m]))
+      - record: app:http_request_duration_seconds:p95_5m
+        expr: histogram_quantile(0.95, sum by (application, environment, le) (rate(django_http_requests_latency_seconds_by_view_method_bucket[5m])))
+
+  - name: application-alerts
+    rules:
+      # Prometheus scrape availability. Two consecutive failed scrapes
+      # (scrape_interval 15s) => for: 30s. Uptime Kuma separately reports
+      # user-facing availability.
+      - alert: ApplicationDown
+        expr: up{application!="monitoring-platform"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.application }} ({{ $labels.environment }}) is down"
+          description: "Prometheus failed to scrape {{ $labels.application }} in {{ $labels.environment }} on two or more consecutive attempts."
+
+      - alert: ApplicationReadinessFailure
+        expr: app_dependency_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.application }} ({{ $labels.environment }}) not ready: {{ $labels.dependency }}"
+          description: "Readiness dependency '{{ $labels.dependency }}' has failed for more than 2 minutes."
+
+      - alert: DatabaseUnavailable
+        expr: app_dependency_up{dependency="database"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.application }} ({{ $labels.environment }}) database unavailable"
+          description: "The database connectivity check (SELECT 1) has failed for more than 1 minute."
+
+      - alert: HighErrorRate
+        expr: |
+          (
+            app:http_responses_5xx:rate5m
+              / on (application, environment) app:http_requests:rate5m
+          ) > scalar(app:threshold:error_ratio_5xx)
+          and on (application, environment)
+          app:http_requests:rate5m > scalar(app:threshold:min_request_rate)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.application }} ({{ $labels.environment }}) HTTP 5xx rate {{ $value | humanizePercentage }}"
+          description: "More than 2% of requests returned HTTP 5xx for 5 minutes, with sufficient request volume."
+
+      - alert: SlowApplication
+        expr: app:http_request_duration_seconds:p95_5m > scalar(app:threshold:p95_latency_seconds)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.application }} ({{ $labels.environment }}) P95 latency {{ $value | humanizeDuration }}"
+          description: "P95 request duration has been above 2 seconds for 5 minutes."

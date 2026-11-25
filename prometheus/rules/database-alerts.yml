@@ -1,3 +1,6 @@
 # Database alert rules.
-# Placeholder: requires readiness metrics (Phase 2) and PostgreSQL Exporter (Phase 4).
+# The readiness-based DatabaseUnavailable alert lives in application-alerts.yml
+# because it is derived from the application's readiness metric.
+# Engine-level alerts require PostgreSQL Exporter (Phase 4). The Funeral Back
+# Office currently uses SQLite, which has no server process to export.
 groups: []

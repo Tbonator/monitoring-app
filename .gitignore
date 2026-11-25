@@ -7,9 +7,6 @@
 *.crt
 secrets/
 
-# Live alertmanager config may contain SMTP/webhook credentials
-alertmanager/alertmanager.yml
-
 # Backups and local data
 backups/
 *.tar

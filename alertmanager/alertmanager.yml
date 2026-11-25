@@ -1,0 +1,28 @@
+# Alertmanager configuration - Phase 2 (local development).
+#
+# NO external notifications are configured: the default receiver has no
+# integrations, so alerts are visible in the Alertmanager UI (:9093) and in
+# Grafana only. To enable email, see alertmanager.yml.example and keep
+# credentials in secrets/ via *_file settings - never inline in this file.
+
+route:
+  receiver: "null"
+  # Deduplicate/group per alert, application and environment.
+  group_by: ["alertname", "application", "environment"]
+  group_wait: 30s
+  group_interval: 5m
+  # Suppress repeated notifications for an ongoing alert.
+  repeat_interval: 4h
+
+inhibit_rules:
+  # A down application makes its other alerts noise.
+  - source_matchers: ['alertname="ApplicationDown"']
+    target_matchers: ['severity=~"warning|critical"', 'alertname!="ApplicationDown"']
+    equal: ["application", "environment"]
+  # Critical suppresses warning for the same alert/application/environment.
+  - source_matchers: ['severity="critical"']
+    target_matchers: ['severity="warning"']
+    equal: ["alertname", "application", "environment"]
+
+receivers:
+  - name: "null"
