@@ -2,6 +2,81 @@
 
 The monitored Funeral Back Office System processes sensitive personal information, so POPIA applies. The monitoring platform must never collect or expose that information.
 
+## Trust boundaries (development)
+
+```mermaid
+flowchart TB
+    lan(["Local network / internet"])
+
+    subgraph laptop["Laptop: boundary 1, nothing listens on the LAN interface"]
+        subgraph loop["Boundary 2: 127.0.0.1 only"]
+            ui["Grafana (login) · Uptime Kuma (login) · GlitchTip (login)<br/>Prometheus · Alertmanager · Loki (no auth: loopback only)"]
+            dj["Django :8000"]
+            m["/metrics: bearer token"]
+            dj --- m
+        end
+        subgraph net["Boundary 3: monitoring-network, not published"]
+            int["PostgreSQL · node / blackbox / postgres exporters · Alloy"]
+        end
+        ro[("Config, secrets, app logs<br/>mounted read-only")]
+    end
+
+    lan -.-x|"blocked: no listener"| loop
+    ui <--> net
+    ro -->|":ro"| net
+    ro -->|":ro"| ui
+```
+
+| Boundary | Control | Enforced by |
+|---|---|---|
+| Laptop to network | Every published port is on 127.0.0.1 | Compose port syntax, checked by `validate.ps1` |
+| Loopback to services | Logins on Grafana, Uptime Kuma and GlitchTip. Bearer token on `/metrics`. | Service config, `monitoring.py` |
+| Container network | PostgreSQL, exporters and Alloy publish no ports | `docker-compose.yml` |
+| Containers to host | No privileged mode, no Docker socket, `no-new-privileges`, read-only mounts | `docker-compose.yml`, security review checks |
+
+The production boundaries (Caddy, the private network and the SSH tunnel) are drawn in [deployment.md](deployment.md#3-network-and-firewall).
+
+## Personal data: defence in depth
+
+Every path that carries text from the application is filtered at least once before storage, and log lines twice.
+
+```mermaid
+flowchart LR
+    src(["Request in the Funeral Back Office<br/>(may contain names, ID numbers,<br/>phones, e-mails, tokens)"])
+
+    src --> metrics["Metrics<br/>labels = view name, method, status<br/>never URL, body or user"]
+    src --> logs1["Logs, layer 1: RedactingFilter<br/>+ query strings stripped,<br/>numeric path segments → :id"]
+    src --> err1["Errors, layer 1: sentry-sdk data_collection off<br/>no user, cookies, headers, bodies,<br/>query params, frame variables"]
+    src --> acc["Production access log (Caddy)<br/>query string removed,<br/>Cookie and Authorization deleted"]
+
+    logs1 --> logs2["Logs, layer 2: Alloy stage.replace<br/>tokens, e-mails, 13-digit IDs,<br/>credential key=value"]
+    err1 --> err2["Errors, layer 2: before_send and<br/>before_breadcrumb redact every string"]
+
+    metrics --> prom[("Prometheus")]
+    logs2 --> loki[("Loki")]
+    err2 --> gt[("GlitchTip")]
+    acc --> stdout[("Caddy container log")]
+```
+
+`tests/test_redaction.py`, `tests/test_privacy_end_to_end.py` (9 fake sensitive values) and `tests/test_https_prod_overlay.ps1` (4 values in the access log) confirm that none of these paths stores the injected data.
+
+## Where secrets live
+
+```mermaid
+flowchart LR
+    subgraph git_ignored["Git-ignored, never committed"]
+        env[".env (dev) / .env.prod (server)<br/>admin passwords, GlitchTip secret key,<br/>DB password"]
+        sec["secrets/<br/>metrics token, GlitchTip DSN,<br/>pg-monitor password, SMTP password"]
+    end
+    tmpl[".env.example, deploy/*.env.example<br/>(placeholders, committed)"] -.->|"copy, then fill in"| env
+
+    env -->|"environment variables"| graf["Grafana"] & gt["GlitchTip + PostgreSQL"]
+    sec -->|"credentials_file :ro"| prom["Prometheus"]
+    sec -->|"DATA_SOURCE_PASS_FILE :ro"| pgexp["postgres-exporter"]
+    sec -->|"smtp_auth_password_file :ro"| am["Alertmanager (prod)"]
+    sec -->|"run-funeral-app.ps1 reads token and DSN"| dj["Django process env"]
+```
+
 ## Controls in place (Phase 1)
 
 | Control | Implementation |

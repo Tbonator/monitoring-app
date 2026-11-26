@@ -37,13 +37,48 @@ Copy-Item .env.example .env      # then set GRAFANA_ADMIN_PASSWORD to a long ran
 
 If PowerShell blocks the scripts, run them with `powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1`.
 
+## At a glance
+
+```mermaid
+flowchart LR
+    app["Funeral Back Office<br/>Django · 127.0.0.1:8000"]
+
+    subgraph stack["Monitoring stack · Docker · 127.0.0.1 only"]
+        prom["Prometheus"]
+        am["Alertmanager"]
+        kuma["Uptime Kuma"]
+        loki["Loki"]
+        alloy["Alloy"]
+        gt["GlitchTip"]
+        exp["Exporters<br/>node · blackbox · postgres"]
+        graf["Grafana"]
+    end
+    winexp["Windows Exporter"]
+
+    prom -->|"scrape /metrics"| app
+    exp -->|"probe /health/*"| app
+    kuma -->|"check /health/*"| app
+    alloy -->|"tail log files"| app
+    app -->|"error events"| gt
+    alloy --> loki
+    prom --> exp & winexp
+    prom -->|"alerts"| am
+    graf --> prom & loki
+```
+
+More schematics: [docs/schematics.md](docs/schematics.md).
+
 ## Documentation
 
-- [docs/local-setup.md](docs/local-setup.md): installation and first-run steps
-- [docs/architecture.md](docs/architecture.md): components and data flow
-- [docs/application-integration.md](docs/application-integration.md): how to connect an application (Phase 2)
-- [docs/security.md](docs/security.md): security and privacy controls
-- [docs/troubleshooting.md](docs/troubleshooting.md): common problems and fixes
-- [docs/deployment.md](docs/deployment.md): notes for future production deployment
+- [docs/schematics.md](docs/schematics.md): index of every diagram
+- [docs/local-setup.md](docs/local-setup.md): installation, first-run steps and what each script does
+- [docs/architecture.md](docs/architecture.md): components, topology, data flows, storage and failure domains
+- [docs/alerting.md](docs/alerting.md): alert catalogue, lifecycle, grouping, inhibition and routing
+- [docs/application-integration.md](docs/application-integration.md): how to connect an application
+- [docs/security.md](docs/security.md): trust boundaries, privacy controls and secrets
+- [docs/security-review.md](docs/security-review.md): Phase 5 security review findings
+- [docs/troubleshooting.md](docs/troubleshooting.md): triage flowcharts, common problems and fixes
+- [docs/deployment.md](docs/deployment.md): production topology, install, backup, restore and upgrades
 - [docs/decisions.md](docs/decisions.md): architecture decision log
+- [tests/README.md](tests/README.md): how to run each test
 - [TASKS.md](TASKS.md) and [CHANGELOG.md](CHANGELOG.md)

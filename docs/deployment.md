@@ -4,21 +4,52 @@
 
 ## 1. Target architecture
 
-```text
-            Internet (HTTPS only)
-                  │ 443
-        ┌─────────▼──────────────── MONITORING SERVER (Linux, Docker Engine) ──┐
-        │  Caddy ──► Grafana        (grafana.example.co.za)                    │
-        │        └─► GlitchTip      (errors.example.co.za)                     │
-        │  Prometheus · Alertmanager · Loki · Uptime Kuma · exporters          │
-        │  (127.0.0.1 only; administrators connect with an SSH tunnel)         │
-        │  Loki :3100 also on the PRIVATE IP (log pushes from the app server)  │
-        └─────────▲──────────────────────────▲─────────────────────────────────┘
-                  │ private network / VPN     │ scrape :8000/metrics, :9100, :12345
-        ┌─────────┴──────────────────────────┴── APP SERVER ───────────────────┐
-        │  Funeral Back Office (Django) ── errors ──► https://errors.example…  │
-        │  deploy/app-server: Alloy (logs → Loki), node-exporter (host metrics)│
-        └──────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    users(["Operators (browser)"])
+    admin(["Administrator (SSH)"])
+    le(["Let's Encrypt"])
+    smtp[("SMTP server")]
+
+    subgraph mon["MONITORING SERVER · Linux, Docker Engine · docker-compose.yml + docker-compose.prod.yml"]
+        direction TB
+        caddy["Caddy 2.11.9<br/>0.0.0.0:80 / 443"]
+        graf["Grafana :3000"]
+        gt["GlitchTip :8000"]
+        subgraph local["127.0.0.1 only"]
+            prom["Prometheus :9090"]
+            am["Alertmanager :9093"]
+            kuma["Uptime Kuma :3001"]
+            lokilocal["Loki :3100"]
+        end
+        lokipriv["Loki :3100 on the PRIVATE IP"]
+        exp["node-exporter · blackbox · postgres-exporter<br/>glitchtip-postgres (internal)"]
+        caddy -->|"grafana.example.co.za"| graf
+        caddy -->|"errors.example.co.za"| gt
+        prom --> am
+        prom --> exp
+        graf --> prom
+        graf --> lokilocal
+    end
+
+    subgraph appsrv["APP SERVER · deploy/app-server/docker-compose.yml"]
+        dj["Funeral Back Office (Django)<br/>:8000 on the private IP"]
+        alloy["Alloy :12345"]
+        nodeapp["node-exporter :9100"]
+        logs[("APP_LOG_DIR")]
+        dj --> logs
+        logs -->|":ro"| alloy
+    end
+
+    users -->|"HTTPS 443"| caddy
+    le <-->|"ACME HTTP-01 / TLS-ALPN"| caddy
+    admin -->|"SSH 22, tunnel to 9090 / 9093 / 3001"| local
+    am -->|"SMTP 587, TLS"| smtp
+
+    prom -->|"private network: scrape :8000/metrics, :9100, :12345<br/>probe /health/*"| appsrv
+    kuma -->|"private network: /health/*"| dj
+    alloy -->|"private network: push logs"| lokipriv
+    dj -->|"HTTPS: error events"| caddy
 ```
 
 The monitoring server is **separate** from the app server, so a failure of one doesn't take down the other (CLAUDE.md §5).
@@ -40,6 +71,35 @@ The monitoring server is **separate** from the app server, so a failure of one d
 | 3100 | **app server private IP only** (Loki push) | none |
 | 8000, 9100, 12345 | none | **monitoring server private IP only** |
 
+```mermaid
+flowchart LR
+    inet(["Internet"])
+    adminip(["Admin IPs"])
+
+    subgraph mon["Monitoring server"]
+        m80["80 / 443 Caddy"]
+        m22["22 SSH"]
+        m3100["3100 Loki (private IP)"]
+        mclosed["9090 · 9093 · 3001 · 3100 public side<br/>127.0.0.1 only"]
+    end
+
+    subgraph app["App server"]
+        a22["22 SSH"]
+        a8000["8000 Django"]
+        a9100["9100 node-exporter"]
+        a12345["12345 Alloy"]
+    end
+
+    inet -->|"allow"| m80
+    inet -.-x|"deny"| m3100
+    inet -.-x|"deny"| a8000
+    adminip -->|"allow"| m22
+    adminip -->|"allow"| a22
+    m22 -.->|"SSH tunnel"| mclosed
+    app -->|"allow from app private IP only"| m3100
+    mon -->|"allow from monitoring private IP only"| a8000 & a9100 & a12345
+```
+
 Everything else is closed. Prometheus, Alertmanager, Loki (public side) and Uptime Kuma are reached through an SSH tunnel:
 
 ```bash
@@ -49,6 +109,27 @@ ssh -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 -L 3001:127.0.0.1:3001 admin@m
 DNS: `grafana.example.co.za` and `errors.example.co.za` point to the monitoring server's public IP (A/AAAA records).
 
 ## 4. Install the monitoring server
+
+The full order of work, across both servers:
+
+```mermaid
+flowchart TB
+    pre["Prerequisites<br/>two Linux servers, private network or VPN,<br/>DNS A/AAAA records, SMTP account"]
+    m1["Monitoring server: clone repo,<br/>create .env.prod and secrets/"]
+    m2["Edit prometheus/targets/production/*.yml<br/>and alertmanager.prod.yml"]
+    m3["compose config --quiet, then up -d"]
+    m4["First-time setup: GlitchTip bootstrap,<br/>pg monitoring user, Uptime Kuma wizard,<br/>Grafana password and users"]
+    a1["App server: deploy/app-server<br/>app-server.env, compose up -d"]
+    a2["Django env: metrics token, DSN,<br/>MONITORING_ENVIRONMENT=production"]
+    fw["Firewalls per section 3"]
+    v["Verify (section 6)"]
+    b["Schedule backups (section 8)"]
+
+    pre --> m1 --> m2 --> m3 --> m4
+    pre --> fw
+    m3 --> a1 --> a2
+    m4 & a2 & fw --> v --> b
+```
 
 ```bash
 git clone <repo> /opt/application-monitoring && cd /opt/application-monitoring
@@ -122,11 +203,51 @@ Logs and error events are redacted at the source (Phase 3), but they're still op
 30 2 * * * cd /opt/application-monitoring && COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod" ./scripts/backup.sh >> /var/log/monitoring-backup.log 2>&1
 ```
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Cron as cron 02:30
+    participant B as backup.sh
+    participant C as docker compose
+    participant V as Named volumes
+    participant D as backups/<timestamp>/
+    participant T as monitoring_backup.prom
+
+    Cron->>B: run
+    B->>C: list volumes from the resolved config
+    B->>C: stop (consistent copy, about 1-3 min)
+    loop each volume
+        B->>V: mount read-only in a throwaway container
+        V-->>D: tar czf volume.tar.gz (chmod 600)
+    end
+    B->>D: delete backup folders older than KEEP_DAYS (default 14)
+    Note over B: exit trap runs even after a failure
+    B->>C: start
+    B->>T: write last_run, success, duration, size (atomic)
+    Note over T: node-exporter → Prometheus →<br/>BackupMissing / BackupFailed
+```
+
 - **Contents:** every volume, including Caddy's certificates and GlitchTip's database. Archives are `chmod 600`.
 - **Alerts:** `BackupMissing` (more than 24 h), `BackupFailed` and `BackupStatusMissing`.
 - **Off-host copies:** these are **still needed** (security review O2). Archives on the same server don't survive the loss of the server.
 
 ## 9. Restore procedure
+
+```mermaid
+flowchart TB
+    start(["Need to restore"]) --> drill["Drill on a workstation<br/>restore.ps1 -BackupDir folder<br/>(Mode Drill, the default)"]
+    drill --> dv["Restore into temporary<br/>restoredrill-* volumes"]
+    dv --> checks["Verify: Prometheus WAL replay,<br/>PostgreSQL start and row count,<br/>SQLite integrity"]
+    checks --> ok{"All checks pass?"}
+    ok -->|"no"| other["Try an older backup"] --> drill
+    ok -->|"yes"| cleanup["Remove only the drill volumes"]
+    cleanup --> newsrv{"Same server?"}
+    newsrv -->|"no, new server"| setup["Sections 4-5 first.<br/>DNS must point to the new IP."]
+    newsrv -->|"yes"| live
+    setup --> live["restore.sh backups/timestamp<br/>type RESTORE to confirm"]
+    live --> stop["Stack stopped, volumes replaced,<br/>stack started"]
+    stop --> verify["Verify: targets up, Grafana login,<br/>GlitchTip issues, Uptime Kuma monitors"]
+```
 
 1. **Rehearse first.** Copy the backup folder to a workstation and run a drill:
    ```powershell
@@ -144,6 +265,19 @@ Logs and error events are redacted at the source (Phase 3), but they're still op
 The tested drill result is recorded in TASKS.md.
 
 ## 10. Updates and rollback
+
+```mermaid
+flowchart LR
+    notes["Read release notes"] --> pin["Change pinned version"]
+    pin --> bk["backup.sh"]
+    bk --> up["pull, then up -d"]
+    up --> ver{"Section 6 checks and<br/>privacy tests pass?"}
+    ver -->|"yes"| doc["Update CHANGELOG"]
+    ver -->|"no"| rb["Restore the old version string, up -d"]
+    rb --> fmt{"Data format changed?"}
+    fmt -->|"no"| doc
+    fmt -->|"yes"| rs["Restore the pre-update backup (section 9)"] --> doc
+```
 
 1. Read the release notes. Change the pinned version in `.env.prod` or the Compose defaults.
 2. Run `./scripts/backup.sh`, then `$COMPOSE pull && $COMPOSE up -d`.

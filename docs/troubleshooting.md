@@ -1,5 +1,56 @@
 # Troubleshooting
 
+## Triage flowcharts
+
+### A Prometheus target is down, or a dashboard shows no data
+
+```mermaid
+flowchart TB
+    s(["Target down / panel empty"]) --> a{"status.ps1:<br/>all containers healthy?"}
+    a -->|"no"| a1["docker compose logs #lt;service#gt;<br/>check OOMKilled (see table)"]
+    a -->|"yes"| b{"Which job?<br/>(Prometheus → Status → Targets)"}
+    b -->|"funeral-back-office"| c{"Error text"}
+    c -->|"connection refused"| c1["Django not running:<br/>run-funeral-app.ps1"]
+    c -->|"401"| c2["Token mismatch: secrets/ file vs<br/>MONITORING_METRICS_TOKEN"]
+    c -->|"404"| c3["MONITORING_METRICS_TOKEN not set<br/>in the Django process"]
+    b -->|"windows"| w1["Windows Exporter service:<br/>Get-Service windows_exporter"]
+    b -->|"blackbox-http"| bb1{"Redirect?"}
+    bb1 -->|"yes, a web UI"| bb2["Use the http_2xx_follow module"]
+    bb1 -->|"no"| bb3["Probe the URL from a container:<br/>docker exec prometheus wget -qO- URL"]
+    b -->|"internal exporter"| e1["Container stopped or restarting:<br/>docker compose ps"]
+    b -->|"all up, panel still empty"| d1["Check the dashboard's Application<br/>and Environment variables, and<br/>the time range"]
+```
+
+### Logs don't appear in Grafana
+
+```mermaid
+flowchart TB
+    s(["No logs in Grafana"]) --> a{"Today's file exists in<br/>FUNERAL_APP_LOG_DIR?"}
+    a -->|"no"| a1["Django not started with the LOGGING block,<br/>or APP_LOG_DIR points elsewhere"]
+    a -->|"yes"| b{"docker exec alloy ls<br/>/var/log/apps/funeral-back-office<br/>shows it?"}
+    b -->|"no"| b1["FUNERAL_APP_LOG_DIR in .env doesn't match.<br/>Recreate alloy after fixing."]
+    b -->|"yes"| c{"Loki /ready returns 200?"}
+    c -->|"no"| c1["Wait 15-60 s after start, or check Loki logs.<br/>Alloy keeps retrying for about 30 min."]
+    c -->|"yes"| d{"Lines older than 3 h?"}
+    d -->|"yes"| d1["Visible after the chunk flush<br/>(about 30 min idle)"]
+    d -->|"no"| d2["Query {application=#quot;funeral-back-office#quot;}<br/>in Explore, with a wider time range"]
+```
+
+### Errors don't appear in GlitchTip
+
+```mermaid
+flowchart TB
+    s(["No error in GlitchTip"]) --> a{"Django started with<br/>run-funeral-app.ps1?"}
+    a -->|"no"| a1["GLITCHTIP_DSN unset, so tracking is off"]
+    a -->|"yes"| b{"secrets\funeral-back-office-glitchtip.dsn<br/>exists?"}
+    b -->|"no"| b1["Run scripts/glitchtip-bootstrap.py"]
+    b -->|"yes"| c{"Was it a 503?"}
+    c -->|"yes"| c1["Deliberately not reported<br/>(readiness failures)"]
+    c -->|"no"| d["Check the GlitchTip container is healthy.<br/>400 means a host not in ALLOWED_HOSTS."]
+```
+
+## Symptoms and fixes
+
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `start.ps1` reports that a port is in use | Another process is listening on 3000, 3001 or 9090 | Find the process with `Get-NetTCPConnection -LocalPort 3000 -State Listen`, then change the port in `.env` or stop that process. |

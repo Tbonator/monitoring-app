@@ -10,6 +10,31 @@
 | Instrumentation | `django-prometheus==2.6.0.dev26` (see ADR-009) |
 | Prometheus job | `funeral-back-office`, labels `application=funeral-back-office`, `environment=development` |
 
+### What the integration adds to the application
+
+The integration only adds to the app. Existing views, settings, middleware and authentication are unchanged.
+
+```mermaid
+flowchart TB
+    subgraph app["funeralmanagementsystem (Django project)"]
+        direction TB
+        settings["settings.py<br/>+ django_prometheus in INSTALLED_APPS<br/>+ Prometheus middleware wraps MIDDLEWARE<br/>+ LOGGING = build_logging_config()<br/>+ init_error_tracking()"]
+        urls["urls.py<br/>+ /health/live/ · /health/ready/ · /metrics<br/>(ahead of the existing routes)"]
+        mon["monitoring.py (new)<br/>health views, token-protected metrics view,<br/>app_dependency_up gauge"]
+        obs["observability.py (new)<br/>redact(), RedactingFilter, JsonFormatter,<br/>DailyFileHandler, init_error_tracking()"]
+        existing["Existing views, models, auth<br/>(unchanged)"]
+    end
+
+    urls --> mon
+    settings --> obs
+    urls --> existing
+
+    mon -->|"/metrics"| prom["Prometheus"]
+    mon -->|"/health/*"| probes["Uptime Kuma, Blackbox"]
+    obs -->|"daily JSON log files"| alloy["Alloy → Loki"]
+    obs -->|"sentry-sdk events"| gt["GlitchTip"]
+```
+
 ### Changes made to the application (additions only)
 
 | File | Change |
@@ -61,6 +86,59 @@ Always bind to **`127.0.0.1:8000`**. Phase 2 confirmed that containers can still
 
 The health responses are marked `never_cache` and contain no hostnames, paths, exception text or personal data. Readiness failures log only a generic warning.
 
+#### Endpoint decision logic
+
+```mermaid
+flowchart TB
+    subgraph live["GET /health/live/"]
+        l1["Process handles the request"] --> l2["200 {status: ok}"]
+    end
+
+    subgraph ready["GET /health/ready/"]
+        r1["SELECT 1 on the default database"] --> r2{"Succeeded?"}
+        r2 -->|"yes"| r3["app_dependency_up = 1<br/>200 {status: ok, checks: {database: ok}}"]
+        r2 -->|"no"| r4["app_dependency_up = 0<br/>generic warning logged<br/>503 {status: fail, checks: {database: fail}}"]
+    end
+
+    subgraph metrics["GET /metrics"]
+        m1{"MONITORING_METRICS_TOKEN<br/>set?"}
+        m1 -->|"no"| m2["404 (endpoint disabled)"]
+        m1 -->|"yes"| m3{"Authorization header equals<br/>Bearer token?<br/>(hmac.compare_digest)"}
+        m3 -->|"no"| m4["401 + WWW-Authenticate: Bearer"]
+        m3 -->|"yes"| m5["Refresh database check"] --> m6["200 Prometheus text format"]
+    end
+```
+
+Only `GET` is accepted. Any other method gets 405.
+
+#### How a request is measured
+
+`PrometheusBeforeMiddleware` is placed first in `MIDDLEWARE` and `PrometheusAfterMiddleware` last, so the measurement wraps the whole request, including the existing middleware.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant B as PrometheusBefore (first)
+    participant M as Existing middleware (unchanged)
+    participant A as PrometheusAfter (last)
+    participant V as View
+
+    C->>B: HTTP request
+    Note over B: start timer, count request
+    B->>M: pass through
+    M->>A: pass through
+    Note over A: resolve view name, e.g. arrangement_detail
+    A->>V: call view
+    V-->>A: response
+    Note over A: count response by status, view and method<br/>observe latency by view and method
+    A-->>M: response
+    M-->>B: response
+    B-->>C: response
+```
+
+Labels use the resolved **view name**, never the URL. `/arrangements/1/` and `/arrangements/999999/` both become `view="arrangement_detail"`, and unmatched URLs become `<unnamed view>`.
+
 ### Metrics exposed
 
 - `django_http_requests_total_by_view_transport_method_total`: requests, by view and method
@@ -77,6 +155,20 @@ All 345 exported series were inspected. The only label values present are view n
 - Inside a container, `localhost` is the container itself. Prometheus and Uptime Kuma use `host.docker.internal`, which is mapped with `extra_hosts: host-gateway`.
 - `ALLOWED_HOSTS` includes `host.docker.internal`.
 - Docker Desktop forwards that traffic to the Windows loopback interface. This was verified with Django listening only on `127.0.0.1:8000`.
+
+```mermaid
+flowchart LR
+    subgraph vm["Docker Desktop VM"]
+        c["Prometheus / Blackbox / Uptime Kuma<br/>container"]
+        hosts["/etc/hosts in the container:<br/>host.docker.internal → host-gateway<br/>(extra_hosts in Compose)"]
+        c --> hosts
+    end
+    hosts -->|"Docker Desktop port forwarding"| lo["Windows loopback<br/>127.0.0.1"]
+    lo --> dj["Django :8000"]
+    lo --> we["Windows Exporter :9182"]
+    lan(["Other machines on the LAN"]) -.-x|"no listener on the LAN interface"| dj
+    wrong["'localhost' inside a container"] -.-x|"means the container itself"| dj
+```
 
 ## Uptime Kuma monitors (manual, after the setup wizard)
 
@@ -97,5 +189,19 @@ Do not configure notifications until they have been approved.
 These routes exist only when `DJANGO_SETTINGS_MODULE=monitoring_test_settings`. Never use that mode outside local development.
 
 ## Adding another application
+
+```mermaid
+flowchart TB
+    s1["1. Inspect the app's settings, URLs and middleware<br/>(no changes without owner approval)"]
+    s2["2. Install pinned django-prometheus<br/>copy health_views.py as monitoring.py"]
+    s3["3. Apply example_settings.py additions<br/>(append only)"]
+    s4["4. Create secrets/#lt;app#gt;-metrics.token<br/>set MONITORING_METRICS_TOKEN in the app"]
+    s5["5. Add a Prometheus job + targets file<br/>labels: application, environment, kind=application"]
+    s6["6. Add Blackbox probe targets<br/>for /health/live/ and /health/ready/"]
+    s7["7. Add Uptime Kuma Live and Ready monitors"]
+    s8["8. validate.ps1, reload Prometheus,<br/>check targets, inspect labels for personal data"]
+    done(["App appears in the dashboard's Application<br/>variable. Existing alerts apply automatically."])
+    s1 --> s2 --> s3 --> s4 --> s5 --> s6 --> s7 --> s8 --> done
+```
 
 See [integrations/django/README.md](../integrations/django/README.md). Every target must carry `application` and `environment` labels, and the dashboard and alerts pick it up automatically. The application's own `/metrics` target must also carry `kind: application`, which `ApplicationDown` matches on. Infrastructure exporters for the same application, such as `windows`, must not carry `kind`.

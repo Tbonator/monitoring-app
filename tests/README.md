@@ -2,6 +2,56 @@
 
 These tests are for development only. Never run them against production.
 
+## What each test covers
+
+```mermaid
+flowchart LR
+    subgraph tests["Tests and checks"]
+        val["validate.ps1"]
+        unit["prometheus/tests/*.test.yml"]
+        dq["check_dashboard_queries.py"]
+        es["test_example_settings.py"]
+        red["test_redaction.py"]
+        rot["test_log_rotation.py"]
+        e2e["test_privacy_end_to_end.py"]
+        rdb["test_readiness_db_failure.py"]
+        traffic["generate_test_traffic.py"]
+        kuma["kuma_status.js"]
+        https["test_https_prod_overlay.ps1"]
+        fs["failure_simulation.ps1"]
+        rest["restore.ps1 drill"]
+    end
+
+    subgraph targets["What they prove"]
+        cfg["All config files valid,<br/>dev and prod"]
+        alerts["Alert rules fire correctly"]
+        dash["Dashboards return data"]
+        integ["Django integration snippet"]
+        priv["No personal data in<br/>logs, errors, access logs"]
+        health["Readiness 503, no leaks"]
+        metr["Error and latency metrics"]
+        avail["Uptime Kuma detects<br/>down and recovery"]
+        prodov["HTTPS, headers, exposure"]
+        resil["Outages alert, recover,<br/>lose no logs"]
+        bkp["Backups restore"]
+    end
+
+    val --> cfg
+    unit --> alerts
+    dq --> dash
+    es --> integ
+    red & rot & e2e --> priv
+    https --> priv
+    rdb --> health
+    traffic --> metr
+    traffic --> alerts
+    kuma --> avail
+    https --> prodov
+    fs --> resil
+    fs --> alerts
+    rest --> bkp
+```
+
 | Test | Command |
 |---|---|
 | Configuration validation | `.\scripts\validate.ps1` |

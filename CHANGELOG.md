@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased] - Documentation schematics
+
+### Added
+- 39 Mermaid schematics across the documentation, all checked with the Mermaid 11 parser.
+- `docs/schematics.md`: an index of every diagram, grouped by question.
+- `docs/alerting.md`: the alert pipeline, lifecycle state machine, grouping and inhibition, routing, and the full catalogue of 17 alerts with their thresholds.
+
+### Changed
+- `docs/architecture.md` rewritten for the Phase 5 state: system context, components table, local topology, port map, startup order, the metrics, availability, logs, errors and alerting flows, the labelling model, volumes and backups, the configuration map and failure domains.
+- `docs/deployment.md`: Mermaid production topology (replaces the ASCII diagram), firewall, install order, backup sequence, restore procedure, and update and rollback flows.
+- `docs/application-integration.md`: what the integration adds, endpoint decision logic, request measurement sequence, Docker-to-Windows networking, and onboarding.
+- `docs/security.md`: trust boundaries, defence-in-depth redaction, and where secrets live.
+- `docs/local-setup.md`: first-run and `start.ps1` flows, a script reference, and corrected prerequisites (all six ports, real memory figures).
+- `docs/troubleshooting.md`: triage flowcharts for down targets, missing logs and missing errors.
+- `tests/README.md`: a test coverage map. `README.md`: an at-a-glance diagram and a complete docs index.
+
 ## [0.5.0] - 2026-11-26 - Phase 5: Production readiness
 
 ### Added

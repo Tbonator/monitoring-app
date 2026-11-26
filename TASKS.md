@@ -177,6 +177,14 @@ Status key: ✅ done and verified · 🟡 partially done · ⬜ not started
 - Schedule backups (cron on the server, or a Windows scheduled task in development). Both need owner approval.
 - The WSL 4 GB cap still needs `wsl --shutdown`.
 
+## Documentation: schematics (2026-11-26)
+
+| Task | Status | Notes |
+|---|---|---|
+| Schematics for architecture, data flows, alerting, integration, security, setup, deployment, troubleshooting and tests | ✅ | 39 Mermaid diagrams. Index: `docs/schematics.md`. |
+| Diagram syntax check | ✅ | All 39 parse with Mermaid 11.17.2. Not yet viewed in a renderer. |
+| New `docs/alerting.md` | ✅ | Catalogue built from `prometheus/rules/*.yml` and both Alertmanager configs |
+
 ## Open issues
 
 - **Low host memory:** 0.31 GB free with the full stack, Django and dev tools running. The stack itself uses about 887 MiB; most of the pressure comes from the Docker Desktop/WSL2 VM. Consider capping WSL2 memory in `%UserProfile%\.wslconfig`. That is a system-wide change, so it needs owner approval.
